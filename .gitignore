@@ -1,4 +1,5 @@
 node_modules/
 output_sample.canvas
+ref/
 .DS_Store
 *.log
