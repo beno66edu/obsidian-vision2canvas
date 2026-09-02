@@ -1,0 +1,48 @@
+/* Vision2Canvas Plugin Styles */
+
+.vision2canvas-modal {
+  padding: 16px;
+  max-width: 500px;
+}
+
+.vision2canvas-modal-header {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.vision2canvas-status {
+  margin: 12px 0;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  font-size: 0.9rem;
+}
+
+.vision2canvas-progress-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-muted);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: v2c-spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes v2c-spin {
+  to { transform: rotate(360deg); }
+}
+
+.vision2canvas-preview-box {
+  margin-top: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  padding: 8px;
+  border-radius: 4px;
+  font-family: var(--font-monospace);
+  font-size: 0.8rem;
+  background-color: var(--background-primary-alt);
+}

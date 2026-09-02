@@ -1,0 +1,10 @@
+{
+  "id": "vision2obsidian",
+  "name": "Vision2Canvas",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Convert physical handwritten notes into structured Obsidian .canvas whiteboards via Vision AI.",
+  "author": "Antigravity",
+  "authorUrl": "https://github.com",
+  "isDesktopOnly": false
+}
