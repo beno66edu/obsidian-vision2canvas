@@ -1,6 +1,6 @@
 {
   "name": "vision-to-canvas",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Convert physical handwritten note photos and images into structured .canvas whiteboards via Vision AI.",
   "main": "main.js",
   "scripts": {
