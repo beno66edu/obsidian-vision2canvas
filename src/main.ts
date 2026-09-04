@@ -12,8 +12,6 @@ export default class Vision2CanvasPlugin extends Plugin {
   settings!: Vision2CanvasSettings;
 
   async onload() {
-    console.log('Loading Vision2Canvas plugin');
-
     await this.loadSettings();
 
     // 1. Register Setting Tab
@@ -21,14 +19,16 @@ export default class Vision2CanvasPlugin extends Plugin {
 
     // 2. Ribbon Icon for quick action
     this.addRibbonIcon('layout-dashboard', 'Convert Clipboard Image to Canvas', () => {
-      this.convertClipboardImage();
+      void this.convertClipboardImage();
     });
 
     // 3. Command: Convert Clipboard Image
     this.addCommand({
       id: 'convert-clipboard-image-to-canvas',
       name: 'Convert Clipboard Image to Canvas',
-      callback: () => this.convertClipboardImage()
+      callback: () => {
+        void this.convertClipboardImage();
+      }
     });
 
     // 4. Right-click context menu on image files in File Explorer
@@ -39,7 +39,9 @@ export default class Vision2CanvasPlugin extends Plugin {
             item
               .setTitle('Convert to Obsidian Canvas Whiteboard')
               .setIcon('layout-dashboard')
-              .onClick(() => this.convertVaultImage(file));
+              .onClick(() => {
+                void this.convertVaultImage(file);
+              });
           });
         }
       })
@@ -47,11 +49,11 @@ export default class Vision2CanvasPlugin extends Plugin {
   }
 
   onunload() {
-    console.log('Unloading Vision2Canvas plugin');
+    // Plugin unloaded
   }
 
   public async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<Vision2CanvasSettings>);
   }
 
   public async saveSettings() {
@@ -77,9 +79,9 @@ export default class Vision2CanvasPlugin extends Plugin {
       const mimeType = ImageUtils.getMimeType(file.path);
 
       await this.processImageBase64(base64Str, mimeType, file.basename, modal);
-    } catch (err: any) {
-      console.error('convertVaultImage failed:', err);
-      modal.showError(err.message || 'Failed to process vault image');
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      modal.showError(errorObj.message || 'Failed to process vault image');
     }
   }
 
@@ -116,9 +118,9 @@ export default class Vision2CanvasPlugin extends Plugin {
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
 
       await this.processImageBase64(base64Str, mimeType, 'ClipboardNote', modal);
-    } catch (err: any) {
-      console.error('convertClipboardImage failed:', err);
-      modal.showError(err.message || 'Failed to read image from clipboard.');
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      modal.showError(errorObj.message || 'Failed to read image from clipboard.');
     }
   }
 

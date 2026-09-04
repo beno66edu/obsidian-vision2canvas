@@ -15,7 +15,7 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName('Vision2Canvas Settings')
+      .setName('AI Provider')
       .setHeading();
 
     // AI Gateway Endpoint
@@ -68,7 +68,7 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
 
     // Layout Customization
     new Setting(containerEl)
-      .setName('Canvas Layout & Prompt Customization')
+      .setName('Canvas Layout & Prompt')
       .setHeading();
 
     new Setting(containerEl)

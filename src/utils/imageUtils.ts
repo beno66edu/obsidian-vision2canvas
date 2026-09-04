@@ -1,3 +1,5 @@
+import { createEl } from 'obsidian';
+
 export class ImageUtils {
   /**
    * Helper to convert ArrayBuffer or Buffer to Base64 string
@@ -38,7 +40,7 @@ export class ImageUtils {
     mimeType: string = 'image/jpeg',
     maxDimension: number = 1600
   ): Promise<{ base64: string; mimeType: string }> {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
+    if (typeof window === 'undefined') {
       return { base64: base64Data, mimeType };
     }
 
@@ -62,7 +64,7 @@ export class ImageUtils {
           }
         }
 
-        const canvas = document.createElement('canvas');
+        const canvas = createEl('canvas');
         canvas.width = width;
         canvas.height = height;
 

@@ -1,21 +1,21 @@
-import { CanvasData, CanvasNode, CanvasEdge } from '../types';
-
 export class CanvasValidator {
   /**
    * Validates if the object adheres to Obsidian Canvas Spec v1
    */
-  public static validate(data: any): { valid: boolean; errors: string[] } {
+  public static validate(data: unknown): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     if (!data || typeof data !== 'object') {
       return { valid: false, errors: ['Canvas data must be a valid JSON object'] };
     }
 
-    if (!Array.isArray(data.nodes)) {
+    const obj = data as Record<string, unknown>;
+
+    if (!Array.isArray(obj.nodes)) {
       errors.push('Canvas data missing "nodes" array');
     }
 
-    if (!Array.isArray(data.edges)) {
+    if (!Array.isArray(obj.edges)) {
       errors.push('Canvas data missing "edges" array');
     }
 
@@ -24,41 +24,48 @@ export class CanvasValidator {
     }
 
     const nodeIds = new Set<string>();
+    const nodes = obj.nodes as Array<Record<string, unknown>>;
+    const edges = obj.edges as Array<Record<string, unknown>>;
 
-    data.nodes.forEach((node: any, i: number) => {
-      if (!node.id || typeof node.id !== 'string') {
+    nodes.forEach((node, i) => {
+      const id = node.id;
+      if (!id || typeof id !== 'string') {
         errors.push(`Node at index ${i} missing valid string "id"`);
       } else {
-        if (nodeIds.has(node.id)) {
-          errors.push(`Duplicate node id "${node.id}" at index ${i}`);
+        if (nodeIds.has(id)) {
+          errors.push(`Duplicate node id "${id}" at index ${i}`);
         }
-        nodeIds.add(node.id);
+        nodeIds.add(id);
       }
 
       if (typeof node.x !== 'number' || typeof node.y !== 'number') {
-        errors.push(`Node "${node.id}" has invalid numeric coordinates (x, y)`);
+        errors.push(`Node "${String(id)}" has invalid numeric coordinates (x, y)`);
       }
 
       if (typeof node.width !== 'number' || typeof node.height !== 'number') {
-        errors.push(`Node "${node.id}" has invalid numeric dimensions (width, height)`);
+        errors.push(`Node "${String(id)}" has invalid numeric dimensions (width, height)`);
       }
 
-      if (!['text', 'file', 'link', 'group'].includes(node.type)) {
-        errors.push(`Node "${node.id}" has invalid type "${node.type}"`);
+      if (typeof node.type !== 'string' || !['text', 'file', 'link', 'group'].includes(node.type)) {
+        errors.push(`Node "${String(id)}" has invalid type "${String(node.type)}"`);
       }
     });
 
-    data.edges.forEach((edge: any, i: number) => {
-      if (!edge.id || typeof edge.id !== 'string') {
+    edges.forEach((edge, i) => {
+      const id = edge.id;
+      const fromNode = edge.fromNode;
+      const toNode = edge.toNode;
+
+      if (!id || typeof id !== 'string') {
         errors.push(`Edge at index ${i} missing valid string "id"`);
       }
 
-      if (!edge.fromNode || !nodeIds.has(edge.fromNode)) {
-        errors.push(`Edge "${edge.id}" references non-existent fromNode "${edge.fromNode}"`);
+      if (typeof fromNode !== 'string' || !nodeIdMapHas(nodeIds, fromNode)) {
+        errors.push(`Edge "${String(id)}" references non-existent fromNode "${String(fromNode)}"`);
       }
 
-      if (!edge.toNode || !nodeIds.has(edge.toNode)) {
-        errors.push(`Edge "${edge.id}" references non-existent toNode "${edge.toNode}"`);
+      if (typeof toNode !== 'string' || !nodeIdMapHas(nodeIds, toNode)) {
+        errors.push(`Edge "${String(id)}" references non-existent toNode "${String(toNode)}"`);
       }
     });
 
@@ -67,4 +74,8 @@ export class CanvasValidator {
       errors
     };
   }
+}
+
+function nodeIdMapHas(set: Set<string>, key: string): boolean {
+  return set.has(key);
 }

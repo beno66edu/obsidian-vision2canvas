@@ -1,4 +1,4 @@
-import { requestUrl } from 'obsidian';
+import { requestUrl, RequestUrlResponse } from 'obsidian';
 import { VisionAnalysisResult, Vision2CanvasSettings } from '../types';
 import { DEFAULT_VISION_SYSTEM_PROMPT } from './promptTemplates';
 
@@ -60,66 +60,45 @@ export class VisionClient {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        let rawContent = '';
+        const response: RequestUrlResponse = await requestUrl({
+          url: endpoint,
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
+          throwOnError: false
+        });
 
-        // Use Obsidian's built-in requestUrl to bypass browser CORS restrictions
-        if (typeof requestUrl === 'function') {
-          const response = await requestUrl({
-            url: endpoint,
-            method: 'POST',
-            headers,
-            body: JSON.stringify(requestBody),
-            throwOnError: false
-          });
-
-          if (response.status === 503 || response.status === 429) {
-            if (attempt < maxRetries) {
-              console.warn(`[VisionClient] AI API temporary status ${response.status}. Retrying attempt ${attempt}/${maxRetries}...`);
-              await new Promise(res => setTimeout(res, 1500 * attempt));
-              continue;
-            }
-            throw new Error(`AI API service temporarily unavailable (${response.status}). Please retry in a few seconds.`);
+        if (response.status === 503 || response.status === 429) {
+          if (attempt < maxRetries) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
+            continue;
           }
-
-          if (response.status >= 400) {
-            throw new Error(`AI API request failed (${response.status}): ${response.text}`);
-          }
-
-          const responseJson = response.json;
-          rawContent = responseJson?.choices?.[0]?.message?.content;
-        } else {
-          // Fallback for non-Obsidian environments (e.g. Node CLI testing)
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(requestBody)
-          });
-
-          if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`AI API request failed (${response.status}): ${errText}`);
-          }
-
-          const responseJson = await response.json();
-          rawContent = responseJson.choices?.[0]?.message?.content;
+          throw new Error(`AI API service temporarily unavailable (${response.status}). Please retry in a few seconds.`);
         }
+
+        if (response.status >= 400) {
+          throw new Error(`AI API request failed (${response.status}): ${response.text}`);
+        }
+
+        const responseJson = response.json as { choices?: Array<{ message?: { content?: string } }> };
+        const rawContent = responseJson?.choices?.[0]?.message?.content;
 
         if (!rawContent) {
           throw new Error('AI API returned empty response content.');
         }
 
         return this.parseJsonResponse(rawContent);
-      } catch (err: any) {
-        lastError = err;
-        if (attempt < maxRetries && (err.message?.includes('503') || err.message?.includes('429'))) {
-          await new Promise(res => setTimeout(res, 1500 * attempt));
+      } catch (err: unknown) {
+        const errorObj = err instanceof Error ? err : new Error(String(err));
+        lastError = errorObj;
+        if (attempt < maxRetries && (errorObj.message.includes('503') || errorObj.message.includes('429'))) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
           continue;
         }
         break;
       }
     }
 
-    console.error('VisionClient Error after retries:', lastError);
     throw lastError || new Error('Failed to analyze image with Vision AI.');
   }
 
@@ -134,14 +113,10 @@ export class VisionClient {
       cleanJson = cleanJson.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
-    try {
-      const parsed = JSON.parse(cleanJson);
-      if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
-        throw new Error('Parsed JSON is missing "nodes" array.');
-      }
-      return parsed as VisionAnalysisResult;
-    } catch (e: any) {
-      throw new Error(`Failed to parse AI output as JSON: ${e.message}\nRaw output: ${rawText}`);
+    const parsed = JSON.parse(cleanJson) as { nodes?: unknown[] };
+    if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
+      throw new Error('Parsed JSON is missing "nodes" array.');
     }
+    return parsed as unknown as VisionAnalysisResult;
   }
 }

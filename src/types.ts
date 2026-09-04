@@ -1,7 +1,7 @@
 // Obsidian Canvas v1 Specification Types
 export type CanvasNodeType = 'text' | 'file' | 'link' | 'group';
 
-export type CanvasNodeColor = '1' | '2' | '3' | '4' | '5' | '6' | string;
+export type CanvasNodeColor = '1' | '2' | '3' | '4' | '5' | '6';
 
 export interface CanvasNode {
   id: string;
@@ -16,7 +16,7 @@ export interface CanvasNode {
   label?: string; // Group label
   color?: CanvasNodeColor;
   background?: string;
-  styleAttributes?: Record<string, any>;
+  styleAttributes?: Record<string, unknown>;
 }
 
 export type NodeSide = 'top' | 'right' | 'bottom' | 'left';
@@ -56,7 +56,7 @@ export interface AIVisionNode {
     height: number; // 0..1000
   };
   category?: string;
-  color?: string; // 1..6
+  color?: CanvasNodeColor;
 }
 
 export interface AIVisionEdge {
@@ -70,7 +70,7 @@ export interface AIVisionGroup {
   id: string;
   title: string;
   nodeIds: string[];
-  color?: string;
+  color?: CanvasNodeColor;
 }
 
 export interface VisionAnalysisResult {

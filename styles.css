@@ -19,6 +19,11 @@
   font-size: 0.9rem;
 }
 
+.vision2canvas-status.is-error {
+  background-color: var(--background-modifier-error);
+  color: var(--text-error);
+}
+
 .vision2canvas-progress-spinner {
   display: inline-block;
   width: 14px;

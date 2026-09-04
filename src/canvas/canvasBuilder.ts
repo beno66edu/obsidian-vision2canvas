@@ -3,10 +3,9 @@ import {
   CanvasNode,
   CanvasEdge,
   VisionAnalysisResult,
-  AIVisionNode,
-  AIVisionEdge,
   NodeSide,
-  Vision2CanvasSettings
+  Vision2CanvasSettings,
+  CanvasNodeColor
 } from '../types';
 
 export class CanvasBuilder {
@@ -183,10 +182,10 @@ export class CanvasBuilder {
     }
   }
 
-  private mapColor(colorStr?: string): string | undefined {
+  private mapColor(colorStr?: string): CanvasNodeColor | undefined {
     if (!colorStr) return undefined;
     if (['1', '2', '3', '4', '5', '6'].includes(colorStr)) {
-      return colorStr;
+      return colorStr as CanvasNodeColor;
     }
     // Simple color name mapping
     const lower = colorStr.toLowerCase();

@@ -28,7 +28,7 @@ __export(main_exports, {
   default: () => Vision2CanvasPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/types.ts
 var DEFAULT_SETTINGS = {
@@ -110,7 +110,7 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("Vision2Canvas Settings").setHeading();
+    new import_obsidian.Setting(containerEl).setName("AI Provider").setHeading();
     new import_obsidian.Setting(containerEl).setName("AI API Endpoint").setDesc("URL of your OpenAI-compatible API Gateway, Google AI Studio, or MLLM server.").addText((text) => text.setPlaceholder("https://generativelanguage.googleapis.com/v1beta/openai").setValue(this.plugin.settings.apiEndpoint).onChange(async (value) => {
       this.plugin.settings.apiEndpoint = value.trim();
       await this.plugin.saveSettings();
@@ -127,7 +127,7 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.outputFolder = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("Canvas Layout & Prompt Customization").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Canvas Layout & Prompt").setHeading();
     new import_obsidian.Setting(containerEl).setName("Auto-Open Canvas After Creation").setDesc("Automatically open the newly generated .canvas file in obsidian.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenCanvas).onChange(async (value) => {
       this.plugin.settings.autoOpenCanvas = value;
       await this.plugin.saveSettings();
@@ -189,55 +189,39 @@ var VisionClient = class {
     let lastError = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        let rawContent = "";
-        if (typeof import_obsidian2.requestUrl === "function") {
-          const response = await (0, import_obsidian2.requestUrl)({
-            url: endpoint,
-            method: "POST",
-            headers,
-            body: JSON.stringify(requestBody),
-            throwOnError: false
-          });
-          if (response.status === 503 || response.status === 429) {
-            if (attempt < maxRetries) {
-              console.warn(`[VisionClient] AI API temporary status ${response.status}. Retrying attempt ${attempt}/${maxRetries}...`);
-              await new Promise((res) => setTimeout(res, 1500 * attempt));
-              continue;
-            }
-            throw new Error(`AI API service temporarily unavailable (${response.status}). Please retry in a few seconds.`);
+        const response = await (0, import_obsidian2.requestUrl)({
+          url: endpoint,
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+          throwOnError: false
+        });
+        if (response.status === 503 || response.status === 429) {
+          if (attempt < maxRetries) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
+            continue;
           }
-          if (response.status >= 400) {
-            throw new Error(`AI API request failed (${response.status}): ${response.text}`);
-          }
-          const responseJson = response.json;
-          rawContent = responseJson?.choices?.[0]?.message?.content;
-        } else {
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(requestBody)
-          });
-          if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`AI API request failed (${response.status}): ${errText}`);
-          }
-          const responseJson = await response.json();
-          rawContent = responseJson.choices?.[0]?.message?.content;
+          throw new Error(`AI API service temporarily unavailable (${response.status}). Please retry in a few seconds.`);
         }
+        if (response.status >= 400) {
+          throw new Error(`AI API request failed (${response.status}): ${response.text}`);
+        }
+        const responseJson = response.json;
+        const rawContent = responseJson?.choices?.[0]?.message?.content;
         if (!rawContent) {
           throw new Error("AI API returned empty response content.");
         }
         return this.parseJsonResponse(rawContent);
       } catch (err) {
-        lastError = err;
-        if (attempt < maxRetries && (err.message?.includes("503") || err.message?.includes("429"))) {
-          await new Promise((res) => setTimeout(res, 1500 * attempt));
+        const errorObj = err instanceof Error ? err : new Error(String(err));
+        lastError = errorObj;
+        if (attempt < maxRetries && (errorObj.message.includes("503") || errorObj.message.includes("429"))) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
           continue;
         }
         break;
       }
     }
-    console.error("VisionClient Error after retries:", lastError);
     throw lastError || new Error("Failed to analyze image with Vision AI.");
   }
   /**
@@ -250,16 +234,11 @@ var VisionClient = class {
     } else if (cleanJson.startsWith("```")) {
       cleanJson = cleanJson.replace(/^```\s*/, "").replace(/\s*```$/, "");
     }
-    try {
-      const parsed = JSON.parse(cleanJson);
-      if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
-        throw new Error('Parsed JSON is missing "nodes" array.');
-      }
-      return parsed;
-    } catch (e) {
-      throw new Error(`Failed to parse AI output as JSON: ${e.message}
-Raw output: ${rawText}`);
+    const parsed = JSON.parse(cleanJson);
+    if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
+      throw new Error('Parsed JSON is missing "nodes" array.');
     }
+    return parsed;
   }
 };
 
@@ -425,44 +404,51 @@ var CanvasValidator = class {
     if (!data || typeof data !== "object") {
       return { valid: false, errors: ["Canvas data must be a valid JSON object"] };
     }
-    if (!Array.isArray(data.nodes)) {
+    const obj = data;
+    if (!Array.isArray(obj.nodes)) {
       errors.push('Canvas data missing "nodes" array');
     }
-    if (!Array.isArray(data.edges)) {
+    if (!Array.isArray(obj.edges)) {
       errors.push('Canvas data missing "edges" array');
     }
     if (errors.length > 0) {
       return { valid: false, errors };
     }
     const nodeIds = /* @__PURE__ */ new Set();
-    data.nodes.forEach((node, i) => {
-      if (!node.id || typeof node.id !== "string") {
+    const nodes = obj.nodes;
+    const edges = obj.edges;
+    nodes.forEach((node, i) => {
+      const id = node.id;
+      if (!id || typeof id !== "string") {
         errors.push(`Node at index ${i} missing valid string "id"`);
       } else {
-        if (nodeIds.has(node.id)) {
-          errors.push(`Duplicate node id "${node.id}" at index ${i}`);
+        if (nodeIds.has(id)) {
+          errors.push(`Duplicate node id "${id}" at index ${i}`);
         }
-        nodeIds.add(node.id);
+        nodeIds.add(id);
       }
       if (typeof node.x !== "number" || typeof node.y !== "number") {
-        errors.push(`Node "${node.id}" has invalid numeric coordinates (x, y)`);
+        errors.push(`Node "${String(id)}" has invalid numeric coordinates (x, y)`);
       }
       if (typeof node.width !== "number" || typeof node.height !== "number") {
-        errors.push(`Node "${node.id}" has invalid numeric dimensions (width, height)`);
+        errors.push(`Node "${String(id)}" has invalid numeric dimensions (width, height)`);
       }
-      if (!["text", "file", "link", "group"].includes(node.type)) {
-        errors.push(`Node "${node.id}" has invalid type "${node.type}"`);
+      if (typeof node.type !== "string" || !["text", "file", "link", "group"].includes(node.type)) {
+        errors.push(`Node "${String(id)}" has invalid type "${String(node.type)}"`);
       }
     });
-    data.edges.forEach((edge, i) => {
-      if (!edge.id || typeof edge.id !== "string") {
+    edges.forEach((edge, i) => {
+      const id = edge.id;
+      const fromNode = edge.fromNode;
+      const toNode = edge.toNode;
+      if (!id || typeof id !== "string") {
         errors.push(`Edge at index ${i} missing valid string "id"`);
       }
-      if (!edge.fromNode || !nodeIds.has(edge.fromNode)) {
-        errors.push(`Edge "${edge.id}" references non-existent fromNode "${edge.fromNode}"`);
+      if (typeof fromNode !== "string" || !nodeIdMapHas(nodeIds, fromNode)) {
+        errors.push(`Edge "${String(id)}" references non-existent fromNode "${String(fromNode)}"`);
       }
-      if (!edge.toNode || !nodeIds.has(edge.toNode)) {
-        errors.push(`Edge "${edge.id}" references non-existent toNode "${edge.toNode}"`);
+      if (typeof toNode !== "string" || !nodeIdMapHas(nodeIds, toNode)) {
+        errors.push(`Edge "${String(id)}" references non-existent toNode "${String(toNode)}"`);
       }
     });
     return {
@@ -471,6 +457,9 @@ var CanvasValidator = class {
     };
   }
 };
+function nodeIdMapHas(set, key) {
+  return set.has(key);
+}
 
 // src/utils/fileUtils.ts
 var FileUtils = class {
@@ -502,6 +491,7 @@ var FileUtils = class {
 };
 
 // src/utils/imageUtils.ts
+var import_obsidian3 = require("obsidian");
 var ImageUtils = class {
   /**
    * Helper to convert ArrayBuffer or Buffer to Base64 string
@@ -540,7 +530,7 @@ var ImageUtils = class {
    * and converting to JPEG quality 0.85 to reduce payload size for Vision AI.
    */
   static async compressImageBase64(base64Data, mimeType = "image/jpeg", maxDimension = 1600) {
-    if (typeof window === "undefined" || typeof document === "undefined") {
+    if (typeof window === "undefined") {
       return { base64: base64Data, mimeType };
     }
     const dataUrl = base64Data.startsWith("data:") ? base64Data : `data:${mimeType};base64,${base64Data}`;
@@ -558,7 +548,7 @@ var ImageUtils = class {
             height = maxDimension;
           }
         }
-        const canvas = document.createElement("canvas");
+        const canvas = (0, import_obsidian3.createEl)("canvas");
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
@@ -580,8 +570,8 @@ var ImageUtils = class {
 };
 
 // src/ui/convertModal.ts
-var import_obsidian3 = require("obsidian");
-var ConvertProgressModal = class extends import_obsidian3.Modal {
+var import_obsidian4 = require("obsidian");
+var ConvertProgressModal = class extends import_obsidian4.Modal {
   statusEl;
   detailEl;
   constructor(app) {
@@ -591,15 +581,15 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("vision2canvas-modal");
-    contentEl.createEl("div", {
+    contentEl.createDiv({
       text: "Vision2Canvas - Converting Note",
       cls: "vision2canvas-modal-header"
     });
-    this.statusEl = contentEl.createEl("div", {
+    this.statusEl = contentEl.createDiv({
       cls: "vision2canvas-status"
     });
     this.updateStatus("Initializing Vision AI request...");
-    this.detailEl = contentEl.createEl("div", {
+    this.detailEl = contentEl.createDiv({
       cls: "vision2canvas-preview-box"
     });
     this.detailEl.hide();
@@ -607,6 +597,7 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
   updateStatus(msg) {
     if (this.statusEl) {
       this.statusEl.empty();
+      this.statusEl.removeClass("is-error");
       this.statusEl.createSpan({ cls: "vision2canvas-progress-spinner" });
       this.statusEl.createSpan({ text: ` ${msg}` });
     }
@@ -614,6 +605,7 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
   showSuccess(msg, details) {
     if (this.statusEl) {
       this.statusEl.empty();
+      this.statusEl.removeClass("is-error");
       this.statusEl.setText(`\u2705 ${msg}`);
     }
     if (details && this.detailEl) {
@@ -624,9 +616,8 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
   showError(msg) {
     if (this.statusEl) {
       this.statusEl.empty();
+      this.statusEl.addClass("is-error");
       this.statusEl.setText(`\u274C ${msg}`);
-      this.statusEl.style.backgroundColor = "var(--background-modifier-error)";
-      this.statusEl.style.color = "var(--text-error)";
     }
   }
   onClose() {
@@ -636,32 +627,34 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
 };
 
 // src/main.ts
-var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
+var Vision2CanvasPlugin = class extends import_obsidian5.Plugin {
   settings;
   async onload() {
-    console.log("Loading Vision2Canvas plugin");
     await this.loadSettings();
     this.addSettingTab(new Vision2CanvasSettingTab(this.app, this));
     this.addRibbonIcon("layout-dashboard", "Convert Clipboard Image to Canvas", () => {
-      this.convertClipboardImage();
+      void this.convertClipboardImage();
     });
     this.addCommand({
       id: "convert-clipboard-image-to-canvas",
       name: "Convert Clipboard Image to Canvas",
-      callback: () => this.convertClipboardImage()
+      callback: () => {
+        void this.convertClipboardImage();
+      }
     });
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian4.TFile && this.isImageFile(file)) {
+        if (file instanceof import_obsidian5.TFile && this.isImageFile(file)) {
           menu.addItem((item) => {
-            item.setTitle("Convert to Obsidian Canvas Whiteboard").setIcon("layout-dashboard").onClick(() => this.convertVaultImage(file));
+            item.setTitle("Convert to Obsidian Canvas Whiteboard").setIcon("layout-dashboard").onClick(() => {
+              void this.convertVaultImage(file);
+            });
           });
         }
       })
     );
   }
   onunload() {
-    console.log("Unloading Vision2Canvas plugin");
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -686,8 +679,8 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
       const mimeType = ImageUtils.getMimeType(file.path);
       await this.processImageBase64(base64Str, mimeType, file.basename, modal);
     } catch (err) {
-      console.error("convertVaultImage failed:", err);
-      modal.showError(err.message || "Failed to process vault image");
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      modal.showError(errorObj.message || "Failed to process vault image");
     }
   }
   /**
@@ -717,8 +710,8 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
       await this.processImageBase64(base64Str, mimeType, "ClipboardNote", modal);
     } catch (err) {
-      console.error("convertClipboardImage failed:", err);
-      modal.showError(err.message || "Failed to read image from clipboard.");
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      modal.showError(errorObj.message || "Failed to read image from clipboard.");
     }
   }
   /**
@@ -750,7 +743,7 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
       `Canvas created successfully! (${canvasData.nodes.length} nodes, ${canvasData.edges.length} edges)`,
       canvasJsonStr
     );
-    new import_obsidian4.Notice(`Vision2Canvas created: ${createdFile.name}`);
+    new import_obsidian5.Notice(`Vision2Canvas created: ${createdFile.name}`);
     if (this.settings.autoOpenCanvas) {
       await this.app.workspace.getLeaf(true).openFile(createdFile);
     }
