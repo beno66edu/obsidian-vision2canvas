@@ -1,7 +1,7 @@
 {
   "id": "vision-to-canvas",
   "name": "Vision2Canvas",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.4.0",
   "description": "Convert physical handwritten notes into structured .canvas whiteboards via Vision AI.",
   "author": "beno66edu",
