@@ -1,7 +1,7 @@
 {
-  "name": "vision2obsidian",
+  "name": "vision-to-canvas",
   "version": "1.0.0",
-  "description": "Convert physical handwritten note photos and images into structured Obsidian .canvas whiteboards via Vision AI.",
+  "description": "Convert physical handwritten note photos and images into structured .canvas whiteboards via Vision AI.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -9,14 +9,12 @@
     "test:sample": "node scripts/test-convert.js"
   },
   "keywords": [
-    "obsidian",
     "canvas",
     "ocr",
     "vision-ai",
-    "handwriting",
-    "openclaw"
+    "handwriting"
   ],
-  "author": "Antigravity",
+  "author": "beno66edu",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",

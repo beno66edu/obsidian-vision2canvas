@@ -110,7 +110,7 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Vision2Canvas Settings" });
+    new import_obsidian.Setting(containerEl).setName("Vision2Canvas Settings").setHeading();
     new import_obsidian.Setting(containerEl).setName("AI API Endpoint").setDesc("URL of your OpenAI-compatible API Gateway, Google AI Studio, or MLLM server.").addText((text) => text.setPlaceholder("https://generativelanguage.googleapis.com/v1beta/openai").setValue(this.plugin.settings.apiEndpoint).onChange(async (value) => {
       this.plugin.settings.apiEndpoint = value.trim();
       await this.plugin.saveSettings();
@@ -127,7 +127,7 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.outputFolder = value.trim();
       await this.plugin.saveSettings();
     }));
-    containerEl.createEl("h3", { text: "Canvas Layout & Prompt Customization" });
+    new import_obsidian.Setting(containerEl).setName("Canvas Layout & Prompt Customization").setHeading();
     new import_obsidian.Setting(containerEl).setName("Auto-Open Canvas After Creation").setDesc("Automatically open the newly generated .canvas file in obsidian.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenCanvas).onChange(async (value) => {
       this.plugin.settings.autoOpenCanvas = value;
       await this.plugin.saveSettings();
@@ -535,6 +535,48 @@ var ImageUtils = class {
         return "image/jpeg";
     }
   }
+  /**
+   * Optimizes base64 image by resizing it if width/height > maxDimension (1600px)
+   * and converting to JPEG quality 0.85 to reduce payload size for Vision AI.
+   */
+  static async compressImageBase64(base64Data, mimeType = "image/jpeg", maxDimension = 1600) {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return { base64: base64Data, mimeType };
+    }
+    const dataUrl = base64Data.startsWith("data:") ? base64Data : `data:${mimeType};base64,${base64Data}`;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round(height * maxDimension / width);
+            width = maxDimension;
+          } else {
+            width = Math.round(width * maxDimension / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          const cleanBase64 = compressedDataUrl.replace(/^data:image\/jpeg;base64,/, "");
+          resolve({ base64: cleanBase64, mimeType: "image/jpeg" });
+          return;
+        }
+        resolve({ base64: base64Data, mimeType });
+      };
+      img.onerror = () => {
+        resolve({ base64: base64Data, mimeType });
+      };
+      img.src = dataUrl;
+    });
+  }
 };
 
 // src/ui/convertModal.ts
@@ -564,12 +606,15 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
   }
   updateStatus(msg) {
     if (this.statusEl) {
-      this.statusEl.innerHTML = `<span class="vision2canvas-progress-spinner"></span> ${msg}`;
+      this.statusEl.empty();
+      this.statusEl.createSpan({ cls: "vision2canvas-progress-spinner" });
+      this.statusEl.createSpan({ text: ` ${msg}` });
     }
   }
   showSuccess(msg, details) {
     if (this.statusEl) {
-      this.statusEl.innerHTML = `\u2705 ${msg}`;
+      this.statusEl.empty();
+      this.statusEl.setText(`\u2705 ${msg}`);
     }
     if (details && this.detailEl) {
       this.detailEl.show();
@@ -578,7 +623,8 @@ var ConvertProgressModal = class extends import_obsidian3.Modal {
   }
   showError(msg) {
     if (this.statusEl) {
-      this.statusEl.innerHTML = `\u274C ${msg}`;
+      this.statusEl.empty();
+      this.statusEl.setText(`\u274C ${msg}`);
       this.statusEl.style.backgroundColor = "var(--background-modifier-error)";
       this.statusEl.style.color = "var(--text-error)";
     }
@@ -676,12 +722,14 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
     }
   }
   /**
-   * Core conversion pipeline: Base64 -> Vision AI -> Canvas Data -> Vault .canvas File
+   * Core conversion pipeline: Base64 -> Image Compression -> Vision AI -> Canvas Data -> Vault .canvas File
    */
   async processImageBase64(base64Str, mimeType, titlePrefix, modal) {
+    modal.updateStatus("Optimizing image size for Vision AI...");
+    const optimized = await ImageUtils.compressImageBase64(base64Str, mimeType);
     modal.updateStatus(`Sending request to Vision AI (${this.settings.modelName})...`);
     const visionClient = new VisionClient(this.settings);
-    const aiResult = await visionClient.analyzeImage(base64Str, mimeType);
+    const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
     modal.updateStatus("AI analysis complete. Building Canvas layout...");
     const canvasBuilder = new CanvasBuilder(this.settings);
     const canvasData = canvasBuilder.buildCanvasData(aiResult);

@@ -123,7 +123,7 @@ export default class Vision2CanvasPlugin extends Plugin {
   }
 
   /**
-   * Core conversion pipeline: Base64 -> Vision AI -> Canvas Data -> Vault .canvas File
+   * Core conversion pipeline: Base64 -> Image Compression -> Vision AI -> Canvas Data -> Vault .canvas File
    */
   private async processImageBase64(
     base64Str: string,
@@ -131,10 +131,13 @@ export default class Vision2CanvasPlugin extends Plugin {
     titlePrefix: string,
     modal: ConvertProgressModal
   ) {
+    modal.updateStatus('Optimizing image size for Vision AI...');
+    const optimized = await ImageUtils.compressImageBase64(base64Str, mimeType);
+
     modal.updateStatus(`Sending request to Vision AI (${this.settings.modelName})...`);
 
     const visionClient = new VisionClient(this.settings);
-    const aiResult = await visionClient.analyzeImage(base64Str, mimeType);
+    const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
 
     modal.updateStatus('AI analysis complete. Building Canvas layout...');
 

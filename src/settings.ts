@@ -14,7 +14,9 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Vision2Canvas Settings' });
+    new Setting(containerEl)
+      .setName('Vision2Canvas Settings')
+      .setHeading();
 
     // AI Gateway Endpoint
     new Setting(containerEl)
@@ -65,7 +67,9 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
         }));
 
     // Layout Customization
-    containerEl.createEl('h3', { text: 'Canvas Layout & Prompt Customization' });
+    new Setting(containerEl)
+      .setName('Canvas Layout & Prompt Customization')
+      .setHeading();
 
     new Setting(containerEl)
       .setName('Auto-Open Canvas After Creation')

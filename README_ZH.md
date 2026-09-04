@@ -112,4 +112,4 @@ Saved output canvas to: /Users/user/projects/vision2obsidian/output_sample.canva
 
 ## 📜 授權條款
 
-MIT License © 2026 Antigravity
+MIT License © 2026 beno66edu

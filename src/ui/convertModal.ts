@@ -31,13 +31,16 @@ export class ConvertProgressModal extends Modal {
 
   public updateStatus(msg: string) {
     if (this.statusEl) {
-      this.statusEl.innerHTML = `<span class="vision2canvas-progress-spinner"></span> ${msg}`;
+      this.statusEl.empty();
+      this.statusEl.createSpan({ cls: 'vision2canvas-progress-spinner' });
+      this.statusEl.createSpan({ text: ` ${msg}` });
     }
   }
 
   public showSuccess(msg: string, details?: string) {
     if (this.statusEl) {
-      this.statusEl.innerHTML = `✅ ${msg}`;
+      this.statusEl.empty();
+      this.statusEl.setText(`✅ ${msg}`);
     }
     if (details && this.detailEl) {
       this.detailEl.show();
@@ -47,7 +50,8 @@ export class ConvertProgressModal extends Modal {
 
   public showError(msg: string) {
     if (this.statusEl) {
-      this.statusEl.innerHTML = `❌ ${msg}`;
+      this.statusEl.empty();
+      this.statusEl.setText(`❌ ${msg}`);
       this.statusEl.style.backgroundColor = 'var(--background-modifier-error)';
       this.statusEl.style.color = 'var(--text-error)';
     }
