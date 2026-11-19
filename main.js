@@ -28,7 +28,7 @@ __export(main_exports, {
   default: () => Vision2CanvasPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/ai/providers.ts
 var PROVIDERS = {
@@ -36,16 +36,224 @@ var PROVIDERS = {
   openai: { name: "OpenAI", endpoint: "https://api.openai.com/v1", model: "gpt-4.1-mini" },
   anthropic: { name: "Anthropic (Claude)", endpoint: "https://api.anthropic.com/v1", model: "claude-sonnet-4-6" },
   openrouter: { name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1", model: "openai/gpt-4.1-mini" },
-  local: { name: "LM Studio (local)", endpoint: "http://127.0.0.1:1234/v1", model: "" },
-  remote: { name: "Custom (OpenAI compatible)", endpoint: "", model: "" }
+  local: { labelKey: "settings.providers.local", endpoint: "http://127.0.0.1:1234/v1", model: "" },
+  remote: { labelKey: "settings.providers.custom", endpoint: "", model: "" }
 };
+function providerName(preset, t) {
+  return "labelKey" in preset ? t(preset.labelKey) : preset.name;
+}
 function defaultConnection(provider) {
   const { endpoint, model } = PROVIDERS[provider];
   return { apiEndpoint: endpoint, apiKey: "", modelName: model };
 }
 
+// src/i18n/index.ts
+var import_obsidian = require("obsidian");
+
+// src/i18n/locales/en.ts
+var en = {
+  "commands.convertClipboard": "Convert Clipboard Image to Canvas",
+  "menu.convertImage": "Convert to Obsidian Canvas Whiteboard",
+  "source.clipboardImage": "clipboard image",
+  "status.converting": "Vision2Canvas: Converting {source}",
+  "notice.canvasCreated": "Vision2Canvas created: {filename}",
+  "notice.conversionFailed": "Vision2Canvas could not convert {source}: {reason}",
+  "notice.openFailed": "Vision2Canvas saved {filename} but could not open it: {reason}",
+  "errors.unknown": "Unknown error",
+  "errors.clipboardEmpty": "No image found in clipboard. Please copy an image first.",
+  "errors.invalidCanvas": "Generated canvas failed validation: {details}",
+  "settings.language.name": "Plugin language",
+  "settings.language.auto": "Automatic (follow Obsidian)",
+  "settings.providers.heading": "AI Provider",
+  "settings.providers.local": "LM Studio (local)",
+  "settings.providers.custom": "Custom (OpenAI compatible)",
+  "settings.connection.name": "Connection Type",
+  "settings.connection.description": "Choose the provider that will analyze your images.",
+  "settings.endpoint.name": "AI API Endpoint",
+  "settings.endpoint.description": "Base URL of your server, including its API version.",
+  "settings.apiKey.name": "API Key",
+  "settings.apiKey.optionalDescription": "Enter a key if your server requires one.",
+  "settings.apiKey.providerDescription": "Enter your {provider} API key.",
+  "settings.model.name": "Vision Model Name",
+  "settings.model.description": "Choose a model that accepts images.",
+  "settings.model.placeholder": "Vision model ID",
+  "settings.outputFolder.name": "Canvas Output Folder",
+  "settings.outputFolder.description": "Choose where to save .canvas files. Leave this empty to save them in the root of your vault.",
+  "settings.outputFolder.placeholder": "Canvases/Handwritten",
+  "settings.openCanvas.name": "Open Canvas After Conversion",
+  "settings.openCanvas.description": "Open the saved Canvas in a new tab when the conversion finishes.",
+  "settings.layout.heading": "Canvas Layout & Prompt",
+  "settings.prompt.name": "Custom System Prompt",
+  "settings.prompt.description": "Set the instructions the model uses to convert an image to a Canvas.",
+  "settings.prompt.placeholder": "Leave empty to use the default instructions.",
+  "errors.ai.endpointRequired": "Set the AI API endpoint in Vision2Canvas settings.",
+  "errors.ai.modelRequired": "Set a vision model for {provider} in Vision2Canvas settings.",
+  "errors.ai.apiKeyRequired": "Set your {provider} API key in Vision2Canvas settings.",
+  "errors.ai.temporarilyUnavailable": "AI API service temporarily unavailable ({status}). Please retry in a few seconds.",
+  "errors.ai.requestFailed": "AI API request failed ({status}): {detail}",
+  "errors.ai.emptyResponse": "The AI service returned an empty response.",
+  "errors.ai.analysisFailed": "Failed to analyze the image.",
+  "errors.ai.modelLoadFailed": 'LM Studio could not load model "{model}" ({status}): {detail}',
+  "errors.ai.missingJson": "The AI response did not contain a JSON object.",
+  "errors.ai.invalidJson": "The AI response contained invalid JSON.",
+  "errors.ai.missingNodes": 'The returned JSON is missing the "nodes" array.',
+  "errors.canvas.invalidObject": "Canvas data must be a JSON object.",
+  "errors.canvas.missingArray": 'Canvas data is missing the "{field}" array.',
+  "errors.canvas.invalidNodeId": 'Node at index {index} is missing a valid string "id".',
+  "errors.canvas.duplicateNodeId": 'Duplicate node ID "{id}" at index {index}.',
+  "errors.canvas.invalidCoordinates": 'Node "{id}" has invalid coordinates (x, y).',
+  "errors.canvas.invalidDimensions": 'Node "{id}" has invalid dimensions (width, height).',
+  "errors.canvas.invalidType": 'Node "{id}" has invalid type "{type}".',
+  "errors.canvas.invalidEdgeId": 'Edge at index {index} is missing a valid string "id".',
+  "errors.canvas.missingEndpoint": 'Edge "{id}" refers to a nonexistent node "{node}" in "{field}".'
+};
+
+// src/i18n/locales/pt-BR.ts
+var ptBR = {
+  "commands.convertClipboard": "Converter imagem da \xE1rea de transfer\xEAncia em Canvas",
+  "menu.convertImage": "Converter em Canvas do Obsidian",
+  "source.clipboardImage": "imagem da \xE1rea de transfer\xEAncia",
+  "status.converting": "Vision2Canvas: convertendo {source}",
+  "notice.canvasCreated": "Vision2Canvas criou o arquivo {filename}.",
+  "notice.conversionFailed": "Vision2Canvas n\xE3o conseguiu converter {source}: {reason}",
+  "notice.openFailed": "Vision2Canvas salvou {filename}, mas n\xE3o conseguiu abri-lo: {reason}",
+  "errors.unknown": "Erro desconhecido",
+  "errors.clipboardEmpty": "Copie uma imagem para a \xE1rea de transfer\xEAncia antes de converter.",
+  "errors.invalidCanvas": "O Canvas gerado falhou na valida\xE7\xE3o: {details}",
+  "settings.language.name": "Idioma do plugin",
+  "settings.language.auto": "Autom\xE1tico (seguir o Obsidian)",
+  "settings.providers.heading": "Provedor de IA",
+  "settings.providers.local": "LM Studio (local)",
+  "settings.providers.custom": "Personalizado (compat\xEDvel com OpenAI)",
+  "settings.connection.name": "Tipo de conex\xE3o",
+  "settings.connection.description": "Escolha o provedor que vai analisar suas imagens.",
+  "settings.endpoint.name": "Endere\xE7o da API de IA",
+  "settings.endpoint.description": "URL base do servidor, incluindo a vers\xE3o da API.",
+  "settings.apiKey.name": "Chave de API",
+  "settings.apiKey.optionalDescription": "Informe uma chave se o servidor exigir.",
+  "settings.apiKey.providerDescription": "Informe a chave de API do provedor {provider}.",
+  "settings.model.name": "Nome do modelo de vis\xE3o",
+  "settings.model.description": "Escolha um modelo que aceite imagens.",
+  "settings.model.placeholder": "ID do modelo de vis\xE3o",
+  "settings.outputFolder.name": "Pasta dos arquivos Canvas",
+  "settings.outputFolder.description": "Escolha onde salvar os arquivos .canvas. Deixe em branco para usar a raiz do cofre.",
+  "settings.outputFolder.placeholder": "Canvas/Manuscritos",
+  "settings.openCanvas.name": "Abrir o Canvas ap\xF3s a convers\xE3o",
+  "settings.openCanvas.description": "Abra o Canvas salvo em uma nova aba ao concluir a convers\xE3o.",
+  "settings.layout.heading": "Layout do Canvas e instru\xE7\xF5es",
+  "settings.prompt.name": "Instru\xE7\xF5es personalizadas do sistema",
+  "settings.prompt.description": "Defina as instru\xE7\xF5es que o modelo usa para converter uma imagem em Canvas.",
+  "settings.prompt.placeholder": "Deixe em branco para usar as instru\xE7\xF5es padr\xE3o.",
+  "errors.ai.endpointRequired": "Informe o endere\xE7o da API de IA nas configura\xE7\xF5es do Vision2Canvas.",
+  "errors.ai.modelRequired": "Defina um modelo de vis\xE3o para {provider} nas configura\xE7\xF5es do Vision2Canvas.",
+  "errors.ai.apiKeyRequired": "Informe a chave de API de {provider} nas configura\xE7\xF5es do Vision2Canvas.",
+  "errors.ai.temporarilyUnavailable": "O servi\xE7o de IA est\xE1 temporariamente indispon\xEDvel ({status}). Tente novamente em alguns segundos.",
+  "errors.ai.requestFailed": "A solicita\xE7\xE3o \xE0 API de IA falhou ({status}): {detail}",
+  "errors.ai.emptyResponse": "O servi\xE7o de IA retornou uma resposta vazia.",
+  "errors.ai.analysisFailed": "N\xE3o foi poss\xEDvel analisar a imagem.",
+  "errors.ai.modelLoadFailed": "O LM Studio n\xE3o conseguiu carregar o modelo \u201C{model}\u201D ({status}): {detail}",
+  "errors.ai.missingJson": "A resposta da IA n\xE3o cont\xE9m um objeto JSON.",
+  "errors.ai.invalidJson": "A resposta da IA cont\xE9m JSON inv\xE1lido.",
+  "errors.ai.missingNodes": "Falta a lista \u201Cnodes\u201D no JSON retornado.",
+  "errors.canvas.invalidObject": "Os dados do Canvas precisam ser um objeto JSON.",
+  "errors.canvas.missingArray": "Falta a lista \u201C{field}\u201D nos dados do Canvas.",
+  "errors.canvas.invalidNodeId": "O n\xF3 na posi\xE7\xE3o {index} precisa de um \u201Cid\u201D de texto v\xE1lido.",
+  "errors.canvas.duplicateNodeId": "O identificador de n\xF3 \u201C{id}\u201D est\xE1 duplicado na posi\xE7\xE3o {index}.",
+  "errors.canvas.invalidCoordinates": "As coordenadas (x, y) do n\xF3 \u201C{id}\u201D s\xE3o inv\xE1lidas.",
+  "errors.canvas.invalidDimensions": "As dimens\xF5es (width, height) do n\xF3 \u201C{id}\u201D s\xE3o inv\xE1lidas.",
+  "errors.canvas.invalidType": "O tipo \u201C{type}\u201D do n\xF3 \u201C{id}\u201D \xE9 inv\xE1lido.",
+  "errors.canvas.invalidEdgeId": "A conex\xE3o na posi\xE7\xE3o {index} precisa de um \u201Cid\u201D de texto v\xE1lido.",
+  "errors.canvas.missingEndpoint": "O campo \u201C{field}\u201D da conex\xE3o \u201C{id}\u201D aponta para o n\xF3 inexistente \u201C{node}\u201D."
+};
+
+// src/i18n/locales/zh-TW.ts
+var zhTW = {
+  "commands.convertClipboard": "\u5C07\u526A\u8CBC\u7C3F\u5716\u7247\u8F49\u63DB\u70BA\u767D\u677F",
+  "menu.convertImage": "\u8F49\u63DB\u70BA Obsidian \u767D\u677F",
+  "source.clipboardImage": "\u526A\u8CBC\u7C3F\u5716\u7247",
+  "status.converting": "Vision2Canvas \u6B63\u5728\u8F49\u63DB\u300C{source}\u300D",
+  "notice.canvasCreated": "Vision2Canvas \u5DF2\u5EFA\u7ACB\u300C{filename}\u300D\u3002",
+  "notice.conversionFailed": "Vision2Canvas \u7121\u6CD5\u8F49\u63DB\u300C{source}\u300D\uFF1A{reason}",
+  "notice.openFailed": "Vision2Canvas \u5DF2\u5132\u5B58\u300C{filename}\u300D\uFF0C\u4F46\u7121\u6CD5\u958B\u555F\uFF1A{reason}",
+  "errors.unknown": "\u672A\u77E5\u932F\u8AA4",
+  "errors.clipboardEmpty": "\u526A\u8CBC\u7C3F\u4E2D\u6C92\u6709\u5716\u7247\uFF0C\u8ACB\u5148\u8907\u88FD\u5716\u7247\u3002",
+  "errors.invalidCanvas": "\u7522\u751F\u7684\u767D\u677F\u672A\u901A\u904E\u9A57\u8B49\uFF1A{details}",
+  "settings.language.name": "\u5916\u639B\u7A0B\u5F0F\u8A9E\u8A00",
+  "settings.language.auto": "\u81EA\u52D5\uFF08\u8DDF\u96A8 Obsidian\uFF09",
+  "settings.providers.heading": "AI \u670D\u52D9\u4F9B\u61C9\u5546",
+  "settings.providers.local": "LM Studio\uFF08\u672C\u6A5F\uFF09",
+  "settings.providers.custom": "\u81EA\u8A02\uFF08\u76F8\u5BB9\u65BC OpenAI\uFF09",
+  "settings.connection.name": "\u9023\u7DDA\u985E\u578B",
+  "settings.connection.description": "\u9078\u64C7\u8981\u7528\u4F86\u5206\u6790\u5716\u7247\u7684\u670D\u52D9\u4F9B\u61C9\u5546\u3002",
+  "settings.endpoint.name": "AI API \u7AEF\u9EDE",
+  "settings.endpoint.description": "\u8F38\u5165\u4F3A\u670D\u5668\u7684\u57FA\u5E95\u7DB2\u5740\uFF0C\u5305\u542B API \u7248\u672C\u3002",
+  "settings.apiKey.name": "API \u91D1\u9470",
+  "settings.apiKey.optionalDescription": "\u82E5\u4F3A\u670D\u5668\u9700\u8981\u91D1\u9470\uFF0C\u8ACB\u5728\u6B64\u8F38\u5165\u3002",
+  "settings.apiKey.providerDescription": "\u8F38\u5165\u60A8\u7684 {provider} API \u91D1\u9470\u3002",
+  "settings.model.name": "\u8996\u89BA\u6A21\u578B\u540D\u7A31",
+  "settings.model.description": "\u9078\u64C7\u652F\u63F4\u5716\u7247\u8F38\u5165\u7684\u6A21\u578B\u3002",
+  "settings.model.placeholder": "\u8996\u89BA\u6A21\u578B ID",
+  "settings.outputFolder.name": "\u767D\u677F\u8F38\u51FA\u8CC7\u6599\u593E",
+  "settings.outputFolder.description": "\u9078\u64C7\u5132\u5B58 .canvas \u6A94\u6848\u7684\u4F4D\u7F6E\u3002\u7559\u7A7A\u5373\u53EF\u5132\u5B58\u5230\u5132\u5B58\u5EAB\u7684\u6839\u76EE\u9304\u3002",
+  "settings.outputFolder.placeholder": "\u767D\u677F/\u624B\u5BEB\u7B46\u8A18",
+  "settings.openCanvas.name": "\u8F49\u63DB\u5B8C\u6210\u5F8C\u958B\u555F\u767D\u677F",
+  "settings.openCanvas.description": "\u8F49\u63DB\u5B8C\u6210\u5F8C\uFF0C\u5728\u65B0\u5206\u9801\u958B\u555F\u5DF2\u5132\u5B58\u7684\u767D\u677F\u3002",
+  "settings.layout.heading": "\u767D\u677F\u7248\u9762\u8207\u63D0\u793A\u8A5E",
+  "settings.prompt.name": "\u81EA\u8A02\u7CFB\u7D71\u63D0\u793A\u8A5E",
+  "settings.prompt.description": "\u8A2D\u5B9A\u6A21\u578B\u5C07\u5716\u7247\u8F49\u63DB\u70BA\u767D\u677F\u6642\u4F7F\u7528\u7684\u6307\u793A\u3002",
+  "settings.prompt.placeholder": "\u7559\u7A7A\u5373\u53EF\u4F7F\u7528\u9810\u8A2D\u6307\u793A\u3002",
+  "errors.ai.endpointRequired": "\u8ACB\u5728 Vision2Canvas \u8A2D\u5B9A\u4E2D\u8F38\u5165 AI API \u7DB2\u5740\u3002",
+  "errors.ai.modelRequired": "\u8ACB\u5728 Vision2Canvas \u8A2D\u5B9A\u4E2D\u6307\u5B9A {provider} \u7684\u8996\u89BA\u6A21\u578B\u3002",
+  "errors.ai.apiKeyRequired": "\u8ACB\u5728 Vision2Canvas \u8A2D\u5B9A\u4E2D\u8F38\u5165 {provider} \u7684 API \u91D1\u9470\u3002",
+  "errors.ai.temporarilyUnavailable": "AI \u670D\u52D9\u66AB\u6642\u7121\u6CD5\u4F7F\u7528\uFF08{status}\uFF09\u3002\u8ACB\u7A0D\u5F8C\u518D\u8A66\u3002",
+  "errors.ai.requestFailed": "AI API \u8ACB\u6C42\u5931\u6557\uFF08{status}\uFF09\uFF1A{detail}",
+  "errors.ai.emptyResponse": "AI \u670D\u52D9\u50B3\u56DE\u7684\u56DE\u61C9\u662F\u7A7A\u7684\u3002",
+  "errors.ai.analysisFailed": "\u7121\u6CD5\u5206\u6790\u5716\u7247\u3002",
+  "errors.ai.modelLoadFailed": "LM Studio \u7121\u6CD5\u8F09\u5165\u6A21\u578B\u300C{model}\u300D\uFF08{status}\uFF09\uFF1A{detail}",
+  "errors.ai.missingJson": "AI \u56DE\u61C9\u4E2D\u6C92\u6709 JSON \u7269\u4EF6\u3002",
+  "errors.ai.invalidJson": "AI \u56DE\u61C9\u4E2D\u7684 JSON \u683C\u5F0F\u7121\u6548\u3002",
+  "errors.ai.missingNodes": "\u50B3\u56DE\u7684 JSON \u7F3A\u5C11\u300Cnodes\u300D\u9663\u5217\u3002",
+  "errors.canvas.invalidObject": "Canvas \u8CC7\u6599\u5FC5\u9808\u662F JSON \u7269\u4EF6\u3002",
+  "errors.canvas.missingArray": "Canvas \u8CC7\u6599\u7F3A\u5C11\u300C{field}\u300D\u9663\u5217\u3002",
+  "errors.canvas.invalidNodeId": "\u7D22\u5F15 {index} \u7684\u7BC0\u9EDE\u7F3A\u5C11\u6709\u6548\u7684\u5B57\u4E32\u300Cid\u300D\u3002",
+  "errors.canvas.duplicateNodeId": "\u7D22\u5F15 {index} \u7684\u7BC0\u9EDE ID\u300C{id}\u300D\u91CD\u8907\u3002",
+  "errors.canvas.invalidCoordinates": "\u7BC0\u9EDE\u300C{id}\u300D\u7684\u5EA7\u6A19\uFF08x\u3001y\uFF09\u7121\u6548\u3002",
+  "errors.canvas.invalidDimensions": "\u7BC0\u9EDE\u300C{id}\u300D\u7684\u5C3A\u5BF8\uFF08width\u3001height\uFF09\u7121\u6548\u3002",
+  "errors.canvas.invalidType": "\u7BC0\u9EDE\u300C{id}\u300D\u7684\u985E\u578B\u300C{type}\u300D\u7121\u6548\u3002",
+  "errors.canvas.invalidEdgeId": "\u7D22\u5F15 {index} \u7684\u9023\u7DDA\u7F3A\u5C11\u6709\u6548\u7684\u5B57\u4E32\u300Cid\u300D\u3002",
+  "errors.canvas.missingEndpoint": "\u9023\u7DDA\u300C{id}\u300D\u7684\u300C{field}\u300D\u6B04\u4F4D\u6307\u5411\u4E0D\u5B58\u5728\u7684\u7BC0\u9EDE\u300C{node}\u300D\u3002"
+};
+
+// src/i18n/index.ts
+var catalogs = { en, "pt-BR": ptBR, "zh-TW": zhTW };
+function isLanguagePreference(value) {
+  return value === "auto" || typeof value === "string" && Object.hasOwn(catalogs, value);
+}
+function resolveLanguage(preference) {
+  if (preference !== "auto") return preference;
+  let language;
+  try {
+    language = typeof import_obsidian.getLanguage === "function" ? (0, import_obsidian.getLanguage)() : globalThis.localStorage.getItem("language");
+  } catch {
+    return "en";
+  }
+  const tag = (language ?? "").trim().toLowerCase().replace(/_/g, "-");
+  if (/^pt(?:-|$)/.test(tag)) return "pt-BR";
+  if (/^zh-(?:hant|tw|hk|mo)(?:-|$)/.test(tag)) return "zh-TW";
+  return "en";
+}
+function translate(locale, key, params) {
+  const template = catalogs[locale][key];
+  if (!params) return template;
+  return template.replace(
+    /\{(\w+)\}/g,
+    (token, name) => Object.hasOwn(params, name) ? String(params[name]) : token
+  );
+}
+
 // src/types.ts
 var DEFAULT_SETTINGS = {
+  language: "auto",
   aiProvider: "gemini",
   connections: {},
   customPrompt: "",
@@ -57,8 +265,13 @@ var DEFAULT_SETTINGS = {
   autoOpenCanvas: true
 };
 function readSettings(saved) {
-  const { apiEndpoint, apiKey, modelName, ...general } = saved ?? {};
-  const settings = { ...DEFAULT_SETTINGS, ...general, connections: { ...general.connections } };
+  const { apiEndpoint, apiKey, modelName, language, ...general } = saved ?? {};
+  const settings = {
+    ...DEFAULT_SETTINGS,
+    ...general,
+    language: isLanguagePreference(language) ? language : DEFAULT_SETTINGS.language,
+    connections: { ...general.connections }
+  };
   if (!saved || general.connections) {
     return settings;
   }
@@ -84,7 +297,73 @@ function readSettings(saved) {
 }
 
 // src/settings.ts
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
+var Vision2CanvasSettingTab = class extends import_obsidian2.PluginSettingTab {
+  plugin;
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    const t = this.plugin.t;
+    const settings = this.plugin.settings;
+    new import_obsidian2.Setting(containerEl).setName(t("settings.language.name")).addDropdown((dropdown) => dropdown.addOption("auto", t("settings.language.auto")).addOption("en", "English").addOption("pt-BR", "Portugu\xEAs (Brasil)").addOption("zh-TW", "\u7E41\u9AD4\u4E2D\u6587").setValue(settings.language).onChange((value) => {
+      const saved = this.plugin.setLanguage(value);
+      this.display();
+      return saved;
+    }));
+    new import_obsidian2.Setting(containerEl).setName(t("settings.providers.heading")).setHeading();
+    const provider = settings.aiProvider;
+    const preset = PROVIDERS[provider];
+    const connection = settings.connections[provider] ??= defaultConnection(provider);
+    const customEndpoint = provider === "local" || provider === "remote";
+    new import_obsidian2.Setting(containerEl).setName(t("settings.connection.name")).setDesc(t("settings.connection.description")).addDropdown((dropdown) => {
+      for (const [id, option] of Object.entries(PROVIDERS)) {
+        dropdown.addOption(id, providerName(option, t));
+      }
+      dropdown.setValue(provider).onChange(async (value) => {
+        settings.aiProvider = value;
+        this.display();
+        await this.plugin.saveSettings();
+      });
+    });
+    if (customEndpoint) {
+      new import_obsidian2.Setting(containerEl).setName(t("settings.endpoint.name")).setDesc(t("settings.endpoint.description")).addText((text) => text.setPlaceholder(preset.endpoint || "https://example.com/v1").setValue(connection.apiEndpoint).onChange(async (value) => {
+        connection.apiEndpoint = value.trim();
+        await this.plugin.saveSettings();
+      }));
+    }
+    new import_obsidian2.Setting(containerEl).setName(t("settings.apiKey.name")).setDesc(customEndpoint ? t("settings.apiKey.optionalDescription") : t("settings.apiKey.providerDescription", { provider: providerName(preset, t) })).addText((text) => {
+      text.inputEl.type = "password";
+      text.setValue(connection.apiKey).onChange(async (value) => {
+        connection.apiKey = value.trim();
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian2.Setting(containerEl).setName(t("settings.model.name")).setDesc(t("settings.model.description")).addText((text) => text.setPlaceholder(preset.model || t("settings.model.placeholder")).setValue(connection.modelName).onChange(async (value) => {
+      connection.modelName = value.trim();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian2.Setting(containerEl).setName(t("settings.outputFolder.name")).setDesc(t("settings.outputFolder.description")).addText((text) => text.setPlaceholder(t("settings.outputFolder.placeholder")).setValue(this.plugin.settings.outputFolder).onChange(async (value) => {
+      this.plugin.settings.outputFolder = value.trim();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian2.Setting(containerEl).setName(t("settings.openCanvas.name")).setDesc(t("settings.openCanvas.description")).addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenCanvas).onChange(async (value) => {
+      this.plugin.settings.autoOpenCanvas = value;
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian2.Setting(containerEl).setName(t("settings.layout.heading")).setHeading();
+    new import_obsidian2.Setting(containerEl).setName(t("settings.prompt.name")).setDesc(t("settings.prompt.description")).addTextArea((text) => text.setPlaceholder(t("settings.prompt.placeholder")).setValue(this.plugin.settings.customPrompt).onChange(async (value) => {
+      this.plugin.settings.customPrompt = value;
+      await this.plugin.saveSettings();
+    }));
+  }
+};
+
+// src/ai/visionClient.ts
+var import_obsidian3 = require("obsidian");
 
 // src/ai/promptTemplates.ts
 var DEFAULT_VISION_SYSTEM_PROMPT = `
@@ -139,76 +418,17 @@ JSON Schema:
 }
 `.trim();
 
-// src/settings.ts
-var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
-  plugin;
-  constructor(app, plugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
-  display() {
-    const { containerEl } = this;
-    containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("AI Provider").setHeading();
-    const settings = this.plugin.settings;
-    const provider = settings.aiProvider;
-    const preset = PROVIDERS[provider];
-    const connection = settings.connections[provider] ??= defaultConnection(provider);
-    const customEndpoint = provider === "local" || provider === "remote";
-    new import_obsidian.Setting(containerEl).setName("Connection Type").setDesc("Choose the provider that will analyze your images.").addDropdown((dropdown) => {
-      for (const [id, { name }] of Object.entries(PROVIDERS)) {
-        dropdown.addOption(id, name);
-      }
-      dropdown.setValue(provider).onChange(async (value) => {
-        settings.aiProvider = value;
-        this.display();
-        await this.plugin.saveSettings();
-      });
-    });
-    if (customEndpoint) {
-      new import_obsidian.Setting(containerEl).setName("AI API Endpoint").setDesc("Base URL of your server, including its API version.").addText((text) => text.setPlaceholder(preset.endpoint || "https://example.com/v1").setValue(connection.apiEndpoint).onChange(async (value) => {
-        connection.apiEndpoint = value.trim();
-        await this.plugin.saveSettings();
-      }));
-    }
-    new import_obsidian.Setting(containerEl).setName("API Key").setDesc(customEndpoint ? "Enter a key if your server requires one." : `Enter your ${preset.name} API key.`).addText((text) => {
-      text.inputEl.type = "password";
-      text.setValue(connection.apiKey).onChange(async (value) => {
-        connection.apiKey = value.trim();
-        await this.plugin.saveSettings();
-      });
-    });
-    new import_obsidian.Setting(containerEl).setName("Vision Model Name").setDesc("Choose a model that accepts images.").addText((text) => text.setPlaceholder(preset.model || "Vision model ID").setValue(connection.modelName).onChange(async (value) => {
-      connection.modelName = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(containerEl).setName("Canvas Output Folder").setDesc("Folder in your vault where generated .canvas files will be saved (leave empty for Vault root).").addText((text) => text.setPlaceholder("Canvases/Handwritten").setValue(this.plugin.settings.outputFolder).onChange(async (value) => {
-      this.plugin.settings.outputFolder = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(containerEl).setName("Open Canvas After Conversion").setDesc("When enabled, open the generated Canvas in a new tab. When disabled, save it to the output folder and show the completion notice.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenCanvas).onChange(async (value) => {
-      this.plugin.settings.autoOpenCanvas = value;
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(containerEl).setName("Canvas Layout & Prompt").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Custom System Prompt").setDesc("Override default System Prompt for Vision AI model.").addTextArea((text) => text.setPlaceholder(DEFAULT_VISION_SYSTEM_PROMPT).setValue(this.plugin.settings.customPrompt).onChange(async (value) => {
-      this.plugin.settings.customPrompt = value;
-      await this.plugin.saveSettings();
-    }));
-  }
-};
-
 // src/ai/visionClient.ts
-var import_obsidian2 = require("obsidian");
 var VisionClient = class {
-  provider;
-  connection;
-  systemPrompt;
-  constructor(settings) {
+  constructor(settings, t) {
+    this.t = t;
     this.provider = settings.aiProvider;
     this.connection = { ...settings.connections[this.provider] ?? defaultConnection(this.provider) };
     this.systemPrompt = settings.customPrompt || DEFAULT_VISION_SYSTEM_PROMPT;
   }
+  provider;
+  connection;
+  systemPrompt;
   /**
    * Analyze image via Vision MLLM API endpoint (with automatic retry for 503/429 transient errors)
    */
@@ -216,10 +436,12 @@ var VisionClient = class {
     const preset = PROVIDERS[this.provider];
     const baseEndpoint = (this.connection.apiEndpoint || preset.endpoint).replace(/\/+$/, "");
     const model = this.connection.modelName || preset.model;
-    if (!baseEndpoint) throw new Error("Set the AI API endpoint in Vision2Canvas settings.");
-    if (!model) throw new Error(`Set a vision model for ${preset.name} in Vision2Canvas settings.`);
+    if (!baseEndpoint) throw new Error(this.t("errors.ai.endpointRequired"));
+    if (!model) {
+      throw new Error(this.t("errors.ai.modelRequired", { provider: providerName(preset, this.t) }));
+    }
     if (!this.connection.apiKey && this.provider !== "local" && this.provider !== "remote") {
-      throw new Error(`Set your ${preset.name} API key in Vision2Canvas settings.`);
+      throw new Error(this.t("errors.ai.apiKeyRequired", { provider: providerName(preset, this.t) }));
     }
     if (this.provider === "local") {
       await this.loadLocalModel(baseEndpoint);
@@ -234,43 +456,39 @@ var VisionClient = class {
       headers["Authorization"] = `Bearer ${this.connection.apiKey}`;
     }
     const maxRetries = 3;
-    let lastError = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let response;
       try {
-        const response = await (0, import_obsidian2.requestUrl)({
+        response = await (0, import_obsidian3.requestUrl)({
           url: endpoint,
           method: "POST",
           headers,
           body: JSON.stringify(requestBody),
           throw: false
         });
-        if (response.status === 503 || response.status === 429) {
-          if (attempt < maxRetries) {
-            await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
-            continue;
-          }
-          throw new Error(`AI API service temporarily unavailable (${response.status}). Please retry in a few seconds.`);
-        }
-        if (response.status >= 400) {
-          throw new Error(`AI API request failed (${response.status}): ${response.text}`);
-        }
-        const responseJson = response.json;
-        const rawContent = this.getResponseContent(responseJson);
-        if (!rawContent) {
-          throw new Error("AI API returned empty response content.");
-        }
-        return this.parseJsonResponse(rawContent);
       } catch (err) {
         const errorObj = err instanceof Error ? err : new Error(String(err));
-        lastError = errorObj;
         if (attempt < maxRetries && (errorObj.message.includes("503") || errorObj.message.includes("429"))) {
           await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
           continue;
         }
-        break;
+        throw errorObj;
       }
+      if (response.status === 503 || response.status === 429) {
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
+          continue;
+        }
+        throw new Error(this.t("errors.ai.temporarilyUnavailable", { status: response.status }));
+      }
+      if (response.status >= 400) {
+        throw new Error(this.t("errors.ai.requestFailed", { status: response.status, detail: response.text }));
+      }
+      const rawContent = this.getResponseContent(response.json);
+      if (!rawContent) throw new Error(this.t("errors.ai.emptyResponse"));
+      return this.parseJsonResponse(rawContent);
     }
-    throw lastError || new Error("Failed to analyze image with Vision AI.");
+    throw new Error(this.t("errors.ai.analysisFailed"));
   }
   buildRequestBody(model, dataUrl) {
     return {
@@ -301,7 +519,7 @@ var VisionClient = class {
     if (this.connection.apiKey) {
       headers["Authorization"] = `Bearer ${this.connection.apiKey}`;
     }
-    const response = await (0, import_obsidian2.requestUrl)({
+    const response = await (0, import_obsidian3.requestUrl)({
       url: loadEndpoint,
       method: "POST",
       headers,
@@ -312,9 +530,11 @@ var VisionClient = class {
       throw: false
     });
     if (response.status >= 400) {
-      throw new Error(
-        `LM Studio could not load model "${this.connection.modelName}" (${response.status}): ${response.text}`
-      );
+      throw new Error(this.t("errors.ai.modelLoadFailed", {
+        model: this.connection.modelName,
+        status: response.status,
+        detail: response.text
+      }));
     }
   }
   /**
@@ -338,11 +558,16 @@ var VisionClient = class {
     const jsonStart = cleanJson.indexOf("{");
     const jsonEnd = cleanJson.lastIndexOf("}");
     if (jsonStart < 0 || jsonEnd <= jsonStart) {
-      throw new Error("AI API response did not contain a JSON object.");
+      throw new Error(this.t("errors.ai.missingJson"));
     }
-    const parsed = JSON.parse(cleanJson.slice(jsonStart, jsonEnd + 1));
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanJson.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      throw new Error(this.t("errors.ai.invalidJson"));
+    }
     if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
-      throw new Error('Parsed JSON is missing "nodes" array.');
+      throw new Error(this.t("errors.ai.missingNodes"));
     }
     return parsed;
   }
@@ -505,17 +730,17 @@ var CanvasValidator = class {
   /**
    * Validates if the object adheres to Obsidian Canvas Spec v1
    */
-  static validate(data) {
+  static validate(data, t) {
     const errors = [];
     if (!data || typeof data !== "object") {
-      return { valid: false, errors: ["Canvas data must be a valid JSON object"] };
+      return { valid: false, errors: [t("errors.canvas.invalidObject")] };
     }
     const obj = data;
     if (!Array.isArray(obj.nodes)) {
-      errors.push('Canvas data missing "nodes" array');
+      errors.push(t("errors.canvas.missingArray", { field: "nodes" }));
     }
     if (!Array.isArray(obj.edges)) {
-      errors.push('Canvas data missing "edges" array');
+      errors.push(t("errors.canvas.missingArray", { field: "edges" }));
     }
     if (errors.length > 0) {
       return { valid: false, errors };
@@ -526,21 +751,21 @@ var CanvasValidator = class {
     nodes.forEach((node, i) => {
       const id = node.id;
       if (!id || typeof id !== "string") {
-        errors.push(`Node at index ${i} missing valid string "id"`);
+        errors.push(t("errors.canvas.invalidNodeId", { index: i }));
       } else {
         if (nodeIds.has(id)) {
-          errors.push(`Duplicate node id "${id}" at index ${i}`);
+          errors.push(t("errors.canvas.duplicateNodeId", { id, index: i }));
         }
         nodeIds.add(id);
       }
       if (typeof node.x !== "number" || typeof node.y !== "number") {
-        errors.push(`Node "${String(id)}" has invalid numeric coordinates (x, y)`);
+        errors.push(t("errors.canvas.invalidCoordinates", { id: String(id) }));
       }
       if (typeof node.width !== "number" || typeof node.height !== "number") {
-        errors.push(`Node "${String(id)}" has invalid numeric dimensions (width, height)`);
+        errors.push(t("errors.canvas.invalidDimensions", { id: String(id) }));
       }
       if (typeof node.type !== "string" || !["text", "file", "link", "group"].includes(node.type)) {
-        errors.push(`Node "${String(id)}" has invalid type "${String(node.type)}"`);
+        errors.push(t("errors.canvas.invalidType", { id: String(id), type: String(node.type) }));
       }
     });
     edges.forEach((edge, i) => {
@@ -548,13 +773,13 @@ var CanvasValidator = class {
       const fromNode = edge.fromNode;
       const toNode = edge.toNode;
       if (!id || typeof id !== "string") {
-        errors.push(`Edge at index ${i} missing valid string "id"`);
+        errors.push(t("errors.canvas.invalidEdgeId", { index: i }));
       }
       if (typeof fromNode !== "string" || !nodeIdMapHas(nodeIds, fromNode)) {
-        errors.push(`Edge "${String(id)}" references non-existent fromNode "${String(fromNode)}"`);
+        errors.push(t("errors.canvas.missingEndpoint", { id: String(id), field: "fromNode", node: String(fromNode) }));
       }
       if (typeof toNode !== "string" || !nodeIdMapHas(nodeIds, toNode)) {
-        errors.push(`Edge "${String(id)}" references non-existent toNode "${String(toNode)}"`);
+        errors.push(t("errors.canvas.missingEndpoint", { id: String(id), field: "toNode", node: String(toNode) }));
       }
     });
     return {
@@ -679,30 +904,28 @@ var ImageUtils = class {
 };
 
 // src/main.ts
-var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
+var CLIPBOARD_COMMAND_ID = "convert-clipboard-image-to-canvas";
+var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
   statusBarItem;
+  clipboardRibbon;
+  locale = "en";
+  t = (key, params) => translate(this.locale, key, params);
   async onload() {
     await this.loadSettings();
-    if (!import_obsidian3.Platform.isMobile) {
+    if (!import_obsidian4.Platform.isMobile) {
       this.statusBarItem = this.addStatusBarItem();
       this.statusBarItem.addClass("vision2canvas-status");
     }
     this.addSettingTab(new Vision2CanvasSettingTab(this.app, this));
-    this.addRibbonIcon("layout-dashboard", "Convert Clipboard Image to Canvas", () => {
+    this.clipboardRibbon = this.addRibbonIcon("layout-dashboard", this.t("commands.convertClipboard"), () => {
       void this.convertClipboardImage();
     });
-    this.addCommand({
-      id: "convert-clipboard-image-to-canvas",
-      name: "Convert Clipboard Image to Canvas",
-      callback: () => {
-        void this.convertClipboardImage();
-      }
-    });
+    this.registerClipboardCommand();
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian3.TFile && this.isImageFile(file)) {
+        if (file instanceof import_obsidian4.TFile && this.isImageFile(file)) {
           menu.addItem((item) => {
-            item.setTitle("Convert to Obsidian Canvas Whiteboard").setIcon("layout-dashboard").onClick(() => {
+            item.setTitle(this.t("menu.convertImage")).setIcon("layout-dashboard").onClick(() => {
               void this.convertVaultImage(file);
             });
           });
@@ -713,10 +936,43 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
   onunload() {
   }
   async loadSettings() {
-    this.settings = readSettings(await this.loadData());
+    const saved = await this.loadData();
+    this.settings = readSettings(saved);
+    this.locale = resolveLanguage(this.settings.language);
+    if (saved?.language !== this.settings.language) await this.saveSettings();
   }
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+  registerClipboardCommand() {
+    this.addCommand({
+      id: CLIPBOARD_COMMAND_ID,
+      name: this.t("commands.convertClipboard"),
+      callback: () => {
+        void this.convertClipboardImage();
+      }
+    });
+  }
+  async setLanguage(preference) {
+    this.settings.language = preference;
+    const locale = resolveLanguage(preference);
+    if (this.locale !== locale) {
+      this.locale = locale;
+      if (typeof this.removeCommand === "function") {
+        this.removeCommand(CLIPBOARD_COMMAND_ID);
+        this.registerClipboardCommand();
+      }
+      if (this.clipboardRibbon) {
+        const label = this.t("commands.convertClipboard");
+        this.clipboardRibbon.setAttribute("aria-label", label);
+        if (typeof import_obsidian4.setTooltip === "function") {
+          (0, import_obsidian4.setTooltip)(this.clipboardRibbon, label, { placement: "right" });
+        } else {
+          this.clipboardRibbon.title = label;
+        }
+      }
+    }
+    await this.saveSettings();
   }
   isImageFile(file) {
     const ext = file.extension.toLowerCase();
@@ -737,7 +993,7 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
    * Reads image from system clipboard and converts it to .canvas
    */
   convertClipboardImage() {
-    return this.runConversion("clipboard image", async (client) => {
+    return this.runConversion(null, async (client) => {
       const clipboardItems = await navigator.clipboard.read();
       let imageBlob = null;
       let mimeType = "image/png";
@@ -750,30 +1006,31 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
         }
       }
       if (!imageBlob) {
-        throw new Error("No image found in clipboard. Please copy an image first.");
+        throw new Error(this.t("errors.clipboardEmpty"));
       }
       const arrayBuffer = await imageBlob.arrayBuffer();
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
       return this.processImageBase64(base64Str, mimeType, "ClipboardNote", client);
     });
   }
-  async runConversion(source, convert) {
-    const label = `Vision2Canvas: Converting ${source}`;
+  async runConversion(filename, convert) {
+    const source = () => filename ?? this.t("source.clipboardImage");
+    const label = this.t("status.converting", { source: source() });
     const spinner = this.statusBarItem?.createSpan({
       cls: "vision2canvas-progress-spinner",
       attr: { role: "progressbar", "aria-label": label, title: label }
     });
     let createdFile;
     try {
-      createdFile = await convert(new VisionClient(this.settings));
+      createdFile = await convert(new VisionClient(this.settings, this.t));
       if (this.settings.autoOpenCanvas) {
         await this.app.workspace.getLeaf(true).openFile(createdFile);
       }
-      new import_obsidian3.Notice(`Vision2Canvas created: ${createdFile.name}`);
+      new import_obsidian4.Notice(this.t("notice.canvasCreated", { filename: createdFile.name }));
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      const message = createdFile ? `Vision2Canvas saved ${createdFile.name} but could not open it` : `Vision2Canvas could not convert ${source}`;
-      new import_obsidian3.Notice(reason ? `${message}: ${reason}` : message);
+      const reason = (err instanceof Error ? err.message : String(err ?? "")) || this.t("errors.unknown");
+      const message = createdFile ? this.t("notice.openFailed", { filename: createdFile.name, reason }) : this.t("notice.conversionFailed", { source: source(), reason });
+      new import_obsidian4.Notice(message);
     } finally {
       spinner?.remove();
     }
@@ -786,9 +1043,9 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
     const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
     const canvasBuilder = new CanvasBuilder(this.settings);
     const canvasData = canvasBuilder.buildCanvasData(aiResult);
-    const validation = CanvasValidator.validate(canvasData);
+    const validation = CanvasValidator.validate(canvasData, this.t);
     if (!validation.valid) {
-      throw new Error(`Generated canvas failed validation: ${validation.errors.join(", ")}`);
+      throw new Error(this.t("errors.invalidCanvas", { details: validation.errors.join(", ") }));
     }
     const canvasJsonStr = JSON.stringify(canvasData, null, 2);
     const filename = FileUtils.generateCanvasFilename(aiResult.title || titlePrefix);

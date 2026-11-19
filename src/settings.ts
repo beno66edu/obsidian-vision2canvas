@@ -1,7 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import Vision2CanvasPlugin from './main';
-import { defaultConnection, ProviderId, PROVIDERS } from './ai/providers';
-import { DEFAULT_VISION_SYSTEM_PROMPT } from './ai/promptTemplates';
+import { defaultConnection, ProviderId, providerName, PROVIDERS } from './ai/providers';
+import type { LanguagePreference } from './i18n';
 
 export class Vision2CanvasSettingTab extends PluginSettingTab {
   plugin: Vision2CanvasPlugin;
@@ -15,22 +15,38 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    const t = this.plugin.t;
+    const settings = this.plugin.settings;
+
     new Setting(containerEl)
-      .setName('AI Provider')
+      .setName(t('settings.language.name'))
+      .addDropdown(dropdown => dropdown
+        .addOption('auto', t('settings.language.auto'))
+        .addOption('en', 'English')
+        .addOption('pt-BR', 'Português (Brasil)')
+        .addOption('zh-TW', '繁體中文')
+        .setValue(settings.language)
+        .onChange(value => {
+          const saved = this.plugin.setLanguage(value as LanguagePreference);
+          this.display();
+          return saved;
+        }));
+
+    new Setting(containerEl)
+      .setName(t('settings.providers.heading'))
       .setHeading();
 
-    const settings = this.plugin.settings;
     const provider = settings.aiProvider;
     const preset = PROVIDERS[provider];
     const connection = settings.connections[provider] ??= defaultConnection(provider);
     const customEndpoint = provider === 'local' || provider === 'remote';
 
     new Setting(containerEl)
-      .setName('Connection Type')
-      .setDesc('Choose the provider that will analyze your images.')
+      .setName(t('settings.connection.name'))
+      .setDesc(t('settings.connection.description'))
       .addDropdown(dropdown => {
-        for (const [id, { name }] of Object.entries(PROVIDERS)) {
-          dropdown.addOption(id, name);
+        for (const [id, option] of Object.entries(PROVIDERS)) {
+          dropdown.addOption(id, providerName(option, t));
         }
         dropdown.setValue(provider).onChange(async value => {
           settings.aiProvider = value as ProviderId;
@@ -41,8 +57,8 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
 
     if (customEndpoint) {
       new Setting(containerEl)
-        .setName('AI API Endpoint')
-        .setDesc('Base URL of your server, including its API version.')
+        .setName(t('settings.endpoint.name'))
+        .setDesc(t('settings.endpoint.description'))
         .addText(text => text
           .setPlaceholder(preset.endpoint || 'https://example.com/v1')
           .setValue(connection.apiEndpoint)
@@ -53,8 +69,8 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
-      .setName('API Key')
-      .setDesc(customEndpoint ? 'Enter a key if your server requires one.' : `Enter your ${preset.name} API key.`)
+      .setName(t('settings.apiKey.name'))
+      .setDesc(customEndpoint ? t('settings.apiKey.optionalDescription') : t('settings.apiKey.providerDescription', { provider: providerName(preset, t) }))
       .addText(text => {
         text.inputEl.type = 'password';
         text.setValue(connection.apiKey).onChange(async value => {
@@ -64,10 +80,10 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('Vision Model Name')
-      .setDesc('Choose a model that accepts images.')
+      .setName(t('settings.model.name'))
+      .setDesc(t('settings.model.description'))
       .addText(text => text
-        .setPlaceholder(preset.model || 'Vision model ID')
+        .setPlaceholder(preset.model || t('settings.model.placeholder'))
         .setValue(connection.modelName)
         .onChange(async value => {
           connection.modelName = value.trim();
@@ -76,10 +92,10 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
 
     // Output Folder
     new Setting(containerEl)
-      .setName('Canvas Output Folder')
-      .setDesc('Folder in your vault where generated .canvas files will be saved (leave empty for Vault root).')
+      .setName(t('settings.outputFolder.name'))
+      .setDesc(t('settings.outputFolder.description'))
       .addText(text => text
-        .setPlaceholder('Canvases/Handwritten')
+        .setPlaceholder(t('settings.outputFolder.placeholder'))
         .setValue(this.plugin.settings.outputFolder)
         .onChange(async (value) => {
           this.plugin.settings.outputFolder = value.trim();
@@ -87,8 +103,8 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Open Canvas After Conversion')
-      .setDesc('When enabled, open the generated Canvas in a new tab. When disabled, save it to the output folder and show the completion notice.')
+      .setName(t('settings.openCanvas.name'))
+      .setDesc(t('settings.openCanvas.description'))
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.autoOpenCanvas)
         .onChange(async (value) => {
@@ -98,14 +114,14 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
 
     // Layout Customization
     new Setting(containerEl)
-      .setName('Canvas Layout & Prompt')
+      .setName(t('settings.layout.heading'))
       .setHeading();
 
     new Setting(containerEl)
-      .setName('Custom System Prompt')
-      .setDesc('Override default System Prompt for Vision AI model.')
+      .setName(t('settings.prompt.name'))
+      .setDesc(t('settings.prompt.description'))
       .addTextArea(text => text
-        .setPlaceholder(DEFAULT_VISION_SYSTEM_PROMPT)
+        .setPlaceholder(t('settings.prompt.placeholder'))
         .setValue(this.plugin.settings.customPrompt)
         .onChange(async (value) => {
           this.plugin.settings.customPrompt = value;

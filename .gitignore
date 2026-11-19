@@ -3,3 +3,4 @@ output_sample.canvas
 ref/
 .DS_Store
 *.log
+/data.json

@@ -1,4 +1,4 @@
-import { Notice, Platform, Plugin, TFile } from 'obsidian';
+import { Notice, Platform, Plugin, setTooltip, TFile } from 'obsidian';
 import { Vision2CanvasSettings, readSettings } from './types';
 import { Vision2CanvasSettingTab } from './settings';
 import { VisionClient } from './ai/visionClient';
@@ -6,10 +6,16 @@ import { CanvasBuilder } from './canvas/canvasBuilder';
 import { CanvasValidator } from './canvas/canvasValidator';
 import { FileUtils } from './utils/fileUtils';
 import { ImageUtils } from './utils/imageUtils';
+import { resolveLanguage, translate, type LanguagePreference, type Locale, type Translator } from './i18n';
+
+const CLIPBOARD_COMMAND_ID = 'convert-clipboard-image-to-canvas';
 
 export default class Vision2CanvasPlugin extends Plugin {
   declare settings: Vision2CanvasSettings;
   private statusBarItem?: HTMLElement;
+  private clipboardRibbon?: HTMLElement;
+  private locale: Locale = 'en';
+  readonly t: Translator = (key, params) => translate(this.locale, key, params);
 
   async onload() {
     await this.loadSettings();
@@ -22,19 +28,11 @@ export default class Vision2CanvasPlugin extends Plugin {
     // 1. Register Setting Tab
     this.addSettingTab(new Vision2CanvasSettingTab(this.app, this));
 
-    // 2. Ribbon Icon for quick action
-    this.addRibbonIcon('layout-dashboard', 'Convert Clipboard Image to Canvas', () => {
+    this.clipboardRibbon = this.addRibbonIcon('layout-dashboard', this.t('commands.convertClipboard'), () => {
       void this.convertClipboardImage();
     });
 
-    // 3. Command: Convert Clipboard Image
-    this.addCommand({
-      id: 'convert-clipboard-image-to-canvas',
-      name: 'Convert Clipboard Image to Canvas',
-      callback: () => {
-        void this.convertClipboardImage();
-      }
-    });
+    this.registerClipboardCommand();
 
     // 4. Right-click context menu on image files in File Explorer
     this.registerEvent(
@@ -42,7 +40,7 @@ export default class Vision2CanvasPlugin extends Plugin {
         if (file instanceof TFile && this.isImageFile(file)) {
           menu.addItem((item) => {
             item
-              .setTitle('Convert to Obsidian Canvas Whiteboard')
+              .setTitle(this.t('menu.convertImage'))
               .setIcon('layout-dashboard')
               .onClick(() => {
                 void this.convertVaultImage(file);
@@ -58,11 +56,44 @@ export default class Vision2CanvasPlugin extends Plugin {
   }
 
   public async loadSettings() {
-    this.settings = readSettings(await this.loadData());
+    const saved = await this.loadData();
+    this.settings = readSettings(saved);
+    this.locale = resolveLanguage(this.settings.language);
+    if (saved?.language !== this.settings.language) await this.saveSettings();
   }
 
   public async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  private registerClipboardCommand() {
+    this.addCommand({
+      id: CLIPBOARD_COMMAND_ID,
+      name: this.t('commands.convertClipboard'),
+      callback: () => { void this.convertClipboardImage(); }
+    });
+  }
+
+  public async setLanguage(preference: LanguagePreference) {
+    this.settings.language = preference;
+    const locale = resolveLanguage(preference);
+    if (this.locale !== locale) {
+      this.locale = locale;
+      if (typeof this.removeCommand === 'function') {
+        this.removeCommand(CLIPBOARD_COMMAND_ID);
+        this.registerClipboardCommand();
+      }
+      if (this.clipboardRibbon) {
+        const label = this.t('commands.convertClipboard');
+        this.clipboardRibbon.setAttribute('aria-label', label);
+        if (typeof setTooltip === 'function') {
+          setTooltip(this.clipboardRibbon, label, { placement: 'right' });
+        } else {
+          this.clipboardRibbon.title = label;
+        }
+      }
+    }
+    await this.saveSettings();
   }
 
   private isImageFile(file: TFile): boolean {
@@ -87,7 +118,7 @@ export default class Vision2CanvasPlugin extends Plugin {
    * Reads image from system clipboard and converts it to .canvas
    */
   public convertClipboardImage() {
-    return this.runConversion('clipboard image', async (client) => {
+    return this.runConversion(null, async (client) => {
       // Use standard Web Clipboard API
       const clipboardItems = await navigator.clipboard.read();
       let imageBlob: Blob | null = null;
@@ -103,7 +134,7 @@ export default class Vision2CanvasPlugin extends Plugin {
       }
 
       if (!imageBlob) {
-        throw new Error('No image found in clipboard. Please copy an image first.');
+        throw new Error(this.t('errors.clipboardEmpty'));
       }
 
       const arrayBuffer = await imageBlob.arrayBuffer();
@@ -113,8 +144,9 @@ export default class Vision2CanvasPlugin extends Plugin {
     });
   }
 
-  private async runConversion(source: string, convert: (client: VisionClient) => Promise<TFile>): Promise<void> {
-    const label = `Vision2Canvas: Converting ${source}`;
+  private async runConversion(filename: string | null, convert: (client: VisionClient) => Promise<TFile>): Promise<void> {
+    const source = () => filename ?? this.t('source.clipboardImage');
+    const label = this.t('status.converting', { source: source() });
     const spinner = this.statusBarItem?.createSpan({
       cls: 'vision2canvas-progress-spinner',
       attr: { role: 'progressbar', 'aria-label': label, title: label }
@@ -122,17 +154,17 @@ export default class Vision2CanvasPlugin extends Plugin {
 
     let createdFile: TFile | undefined;
     try {
-      createdFile = await convert(new VisionClient(this.settings));
+      createdFile = await convert(new VisionClient(this.settings, this.t));
       if (this.settings.autoOpenCanvas) {
         await this.app.workspace.getLeaf(true).openFile(createdFile);
       }
-      new Notice(`Vision2Canvas created: ${createdFile.name}`);
+      new Notice(this.t('notice.canvasCreated', { filename: createdFile.name }));
     } catch (err: unknown) {
-      const reason = err instanceof Error ? err.message : String(err);
+      const reason = (err instanceof Error ? err.message : String(err ?? '')) || this.t('errors.unknown');
       const message = createdFile
-        ? `Vision2Canvas saved ${createdFile.name} but could not open it`
-        : `Vision2Canvas could not convert ${source}`;
-      new Notice(reason ? `${message}: ${reason}` : message);
+        ? this.t('notice.openFailed', { filename: createdFile.name, reason })
+        : this.t('notice.conversionFailed', { source: source(), reason });
+      new Notice(message);
     } finally {
       spinner?.remove();
     }
@@ -154,9 +186,9 @@ export default class Vision2CanvasPlugin extends Plugin {
     const canvasBuilder = new CanvasBuilder(this.settings);
     const canvasData = canvasBuilder.buildCanvasData(aiResult);
 
-    const validation = CanvasValidator.validate(canvasData);
+    const validation = CanvasValidator.validate(canvasData, this.t);
     if (!validation.valid) {
-      throw new Error(`Generated canvas failed validation: ${validation.errors.join(', ')}`);
+      throw new Error(this.t('errors.invalidCanvas', { details: validation.errors.join(', ') }));
     }
 
     const canvasJsonStr = JSON.stringify(canvasData, null, 2);

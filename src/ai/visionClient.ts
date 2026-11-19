@@ -1,6 +1,7 @@
 import { requestUrl, RequestUrlResponse } from 'obsidian';
+import type { Translator } from '../i18n';
 import { VisionAnalysisResult, Vision2CanvasSettings } from '../types';
-import { Connection, defaultConnection, ProviderId, PROVIDERS } from './providers';
+import { Connection, defaultConnection, ProviderId, providerName, PROVIDERS } from './providers';
 import { DEFAULT_VISION_SYSTEM_PROMPT } from './promptTemplates';
 
 export class VisionClient {
@@ -8,7 +9,7 @@ export class VisionClient {
   private readonly connection: Connection;
   private readonly systemPrompt: string;
 
-  constructor(settings: Vision2CanvasSettings) {
+  constructor(settings: Vision2CanvasSettings, private readonly t: Translator) {
     this.provider = settings.aiProvider;
     this.connection = { ...(settings.connections[this.provider] ?? defaultConnection(this.provider)) };
     this.systemPrompt = settings.customPrompt || DEFAULT_VISION_SYSTEM_PROMPT;
@@ -21,10 +22,12 @@ export class VisionClient {
     const preset = PROVIDERS[this.provider];
     const baseEndpoint = (this.connection.apiEndpoint || preset.endpoint).replace(/\/+$/, '');
     const model = this.connection.modelName || preset.model;
-    if (!baseEndpoint) throw new Error('Set the AI API endpoint in Vision2Canvas settings.');
-    if (!model) throw new Error(`Set a vision model for ${preset.name} in Vision2Canvas settings.`);
+    if (!baseEndpoint) throw new Error(this.t('errors.ai.endpointRequired'));
+    if (!model) {
+      throw new Error(this.t('errors.ai.modelRequired', { provider: providerName(preset, this.t) }));
+    }
     if (!this.connection.apiKey && this.provider !== 'local' && this.provider !== 'remote') {
-      throw new Error(`Set your ${preset.name} API key in Vision2Canvas settings.`);
+      throw new Error(this.t('errors.ai.apiKeyRequired', { provider: providerName(preset, this.t) }));
     }
     if (this.provider === 'local') {
       await this.loadLocalModel(baseEndpoint);
@@ -45,56 +48,43 @@ export class VisionClient {
     }
 
     const maxRetries = 3;
-    let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let response: RequestUrlResponse;
       try {
-        const response: RequestUrlResponse = await requestUrl({
+        response = await requestUrl({
           url: endpoint,
           method: 'POST',
           headers,
           body: JSON.stringify(requestBody),
           throw: false
         });
-
-        if (response.status === 503 || response.status === 429) {
-          if (attempt < maxRetries) {
-            await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
-            continue;
-          }
-          throw new Error(`AI API service temporarily unavailable (${response.status}). Please retry in a few seconds.`);
-        }
-
-        if (response.status >= 400) {
-          throw new Error(`AI API request failed (${response.status}): ${response.text}`);
-        }
-
-        const responseJson = response.json as {
-          choices?: Array<{
-            message?: {
-              content?: string | Array<{ text?: string }>;
-            };
-          }>;
-        };
-        const rawContent = this.getResponseContent(responseJson);
-
-        if (!rawContent) {
-          throw new Error('AI API returned empty response content.');
-        }
-
-        return this.parseJsonResponse(rawContent);
       } catch (err: unknown) {
         const errorObj = err instanceof Error ? err : new Error(String(err));
-        lastError = errorObj;
         if (attempt < maxRetries && (errorObj.message.includes('503') || errorObj.message.includes('429'))) {
           await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
           continue;
         }
-        break;
+        throw errorObj;
       }
+
+      if (response.status === 503 || response.status === 429) {
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
+          continue;
+        }
+        throw new Error(this.t('errors.ai.temporarilyUnavailable', { status: response.status }));
+      }
+
+      if (response.status >= 400) {
+        throw new Error(this.t('errors.ai.requestFailed', { status: response.status, detail: response.text }));
+      }
+      const rawContent = this.getResponseContent(response.json);
+      if (!rawContent) throw new Error(this.t('errors.ai.emptyResponse'));
+      return this.parseJsonResponse(rawContent);
     }
 
-    throw lastError || new Error('Failed to analyze image with Vision AI.');
+    throw new Error(this.t('errors.ai.analysisFailed'));
   }
 
   private buildRequestBody(model: string, dataUrl: string): Record<string, unknown> {
@@ -143,9 +133,9 @@ export class VisionClient {
     });
 
     if (response.status >= 400) {
-      throw new Error(
-        `LM Studio could not load model "${this.connection.modelName}" (${response.status}): ${response.text}`
-      );
+      throw new Error(this.t('errors.ai.modelLoadFailed', {
+        model: this.connection.modelName, status: response.status, detail: response.text
+      }));
     }
   }
 
@@ -187,12 +177,17 @@ export class VisionClient {
     const jsonEnd = cleanJson.lastIndexOf('}');
 
     if (jsonStart < 0 || jsonEnd <= jsonStart) {
-      throw new Error('AI API response did not contain a JSON object.');
+      throw new Error(this.t('errors.ai.missingJson'));
     }
 
-    const parsed = JSON.parse(cleanJson.slice(jsonStart, jsonEnd + 1)) as { nodes?: unknown[] };
+    let parsed: { nodes?: unknown[] };
+    try {
+      parsed = JSON.parse(cleanJson.slice(jsonStart, jsonEnd + 1));
+    } catch {
+      throw new Error(this.t('errors.ai.invalidJson'));
+    }
     if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
-      throw new Error('Parsed JSON is missing "nodes" array.');
+      throw new Error(this.t('errors.ai.missingNodes'));
     }
     return parsed as unknown as VisionAnalysisResult;
   }

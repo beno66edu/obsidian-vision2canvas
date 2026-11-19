@@ -1,4 +1,5 @@
 import { Connection, defaultConnection, ProviderId, PROVIDERS } from './ai/providers';
+import { isLanguagePreference, type LanguagePreference } from './i18n';
 
 // Obsidian Canvas v1 Specification Types
 export type CanvasNodeType = 'text' | 'file' | 'link' | 'group';
@@ -84,6 +85,7 @@ export interface VisionAnalysisResult {
 
 // Plugin Settings Interface
 export interface Vision2CanvasSettings {
+  language: LanguagePreference;
   aiProvider: ProviderId;
   connections: Partial<Record<ProviderId, Connection>>;
   customPrompt: string;
@@ -96,6 +98,7 @@ export interface Vision2CanvasSettings {
 }
 
 export const DEFAULT_SETTINGS: Vision2CanvasSettings = {
+  language: 'auto',
   aiProvider: 'gemini',
   connections: {},
   customPrompt: '',
@@ -109,8 +112,13 @@ export const DEFAULT_SETTINGS: Vision2CanvasSettings = {
 
 // Older installs saved a single connection alongside the general settings.
 export function readSettings(saved: Partial<Vision2CanvasSettings & Connection> | null): Vision2CanvasSettings {
-  const { apiEndpoint, apiKey, modelName, ...general } = saved ?? {};
-  const settings = { ...DEFAULT_SETTINGS, ...general, connections: { ...general.connections } };
+  const { apiEndpoint, apiKey, modelName, language, ...general } = saved ?? {};
+  const settings = {
+    ...DEFAULT_SETTINGS,
+    ...general,
+    language: isLanguagePreference(language) ? language : DEFAULT_SETTINGS.language,
+    connections: { ...general.connections }
+  };
   if (!saved || general.connections) {
     return settings;
   }
