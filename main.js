@@ -28,7 +28,7 @@ __export(main_exports, {
   default: () => Vision2CanvasPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // src/types.ts
 var DEFAULT_SETTINGS = {
@@ -141,11 +141,11 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.outputFolder = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("Canvas Layout & Prompt").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Auto-Open Canvas After Creation").setDesc("Automatically open the newly generated .canvas file in obsidian.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenCanvas).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Open Canvas After Conversion").setDesc("When enabled, open the generated Canvas in a new tab. When disabled, save it to the output folder and show the completion notice.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenCanvas).onChange(async (value) => {
       this.plugin.settings.autoOpenCanvas = value;
       await this.plugin.saveSettings();
     }));
+    new import_obsidian.Setting(containerEl).setName("Canvas Layout & Prompt").setHeading();
     new import_obsidian.Setting(containerEl).setName("Custom System Prompt").setDesc("Override default System Prompt for Vision AI model.").addTextArea((text) => text.setPlaceholder(DEFAULT_VISION_SYSTEM_PROMPT).setValue(this.plugin.settings.customPrompt).onChange(async (value) => {
       this.plugin.settings.customPrompt = value;
       await this.plugin.saveSettings();
@@ -192,7 +192,7 @@ var VisionClient = class _VisionClient {
           method: "POST",
           headers,
           body: JSON.stringify(requestBody),
-          throwOnError: false
+          throw: false
         });
         console.log("[Gemini] Headers:", response.headers);
         console.log("[Gemini] Text:", response.text);
@@ -308,7 +308,7 @@ var VisionClient = class _VisionClient {
         model: this.settings.modelName,
         echo_load_config: false
       }),
-      throwOnError: false
+      throw: false
     });
     if (response.status >= 400) {
       throw new Error(
@@ -677,68 +677,15 @@ var ImageUtils = class {
   }
 };
 
-// src/ui/convertModal.ts
-var import_obsidian3 = require("obsidian");
-var ConvertProgressModal = class extends import_obsidian3.Modal {
-  statusEl;
-  detailEl;
-  constructor(app) {
-    super(app);
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.addClass("vision2canvas-modal");
-    contentEl.createDiv({
-      text: "Vision2Canvas - Converting Note",
-      cls: "vision2canvas-modal-header"
-    });
-    this.statusEl = contentEl.createDiv({
-      cls: "vision2canvas-status"
-    });
-    this.updateStatus("Initializing Vision AI request...");
-    this.detailEl = contentEl.createDiv({
-      cls: "vision2canvas-preview-box"
-    });
-    this.detailEl.hide();
-  }
-  updateStatus(msg) {
-    if (this.statusEl) {
-      this.statusEl.empty();
-      this.statusEl.removeClass("is-error");
-      this.statusEl.createSpan({ cls: "vision2canvas-progress-spinner" });
-      this.statusEl.createSpan({ text: ` ${msg}` });
-    }
-  }
-  showSuccess(msg, details) {
-    if (this.statusEl) {
-      this.statusEl.empty();
-      this.statusEl.removeClass("is-error");
-      this.statusEl.setText(`\u2705 ${msg}`);
-    }
-    if (details && this.detailEl) {
-      this.detailEl.show();
-      this.detailEl.setText(details);
-    }
-  }
-  showError(msg) {
-    if (this.statusEl) {
-      this.statusEl.empty();
-      this.statusEl.addClass("is-error");
-      this.statusEl.setText(`\u274C ${msg}`);
-    }
-  }
-  onClose() {
-    const { contentEl } = this;
-    contentEl.empty();
-  }
-};
-
 // src/main.ts
-var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
-  settings;
+var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
+  statusBarItem;
   async onload() {
     await this.loadSettings();
+    if (!import_obsidian3.Platform.isMobile) {
+      this.statusBarItem = this.addStatusBarItem();
+      this.statusBarItem.addClass("vision2canvas-status");
+    }
     this.addSettingTab(new Vision2CanvasSettingTab(this.app, this));
     this.addRibbonIcon("layout-dashboard", "Convert Clipboard Image to Canvas", () => {
       void this.convertClipboardImage();
@@ -752,7 +699,7 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
     });
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (file instanceof import_obsidian4.TFile && this.isImageFile(file)) {
+        if (file instanceof import_obsidian3.TFile && this.isImageFile(file)) {
           menu.addItem((item) => {
             item.setTitle("Convert to Obsidian Canvas Whiteboard").setIcon("layout-dashboard").onClick(() => {
               void this.convertVaultImage(file);
@@ -777,28 +724,19 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
   /**
    * Reads an image file from the Vault and converts it to .canvas
    */
-  async convertVaultImage(file) {
-    const modal = new ConvertProgressModal(this.app);
-    modal.open();
-    try {
-      modal.updateStatus(`Reading image file "${file.name}"...`);
+  convertVaultImage(file) {
+    return this.runConversion(file.name, async () => {
       const arrayBuffer = await this.app.vault.readBinary(file);
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
       const mimeType = ImageUtils.getMimeType(file.path);
-      await this.processImageBase64(base64Str, mimeType, file.basename, modal);
-    } catch (err) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      modal.showError(errorObj.message || "Failed to process vault image");
-    }
+      return this.processImageBase64(base64Str, mimeType, file.basename);
+    });
   }
   /**
    * Reads image from system clipboard and converts it to .canvas
    */
-  async convertClipboardImage() {
-    const modal = new ConvertProgressModal(this.app);
-    modal.open();
-    try {
-      modal.updateStatus("Reading image from clipboard...");
+  convertClipboardImage() {
+    return this.runConversion("clipboard image", async () => {
       const clipboardItems = await navigator.clipboard.read();
       let imageBlob = null;
       let mimeType = "image/png";
@@ -811,27 +749,41 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
         }
       }
       if (!imageBlob) {
-        modal.showError("No image found in clipboard. Please copy an image first.");
-        return;
+        throw new Error("No image found in clipboard. Please copy an image first.");
       }
       const arrayBuffer = await imageBlob.arrayBuffer();
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
-      await this.processImageBase64(base64Str, mimeType, "ClipboardNote", modal);
+      return this.processImageBase64(base64Str, mimeType, "ClipboardNote");
+    });
+  }
+  async runConversion(source, convert) {
+    const label = `Vision2Canvas: Converting ${source}`;
+    const spinner = this.statusBarItem?.createSpan({
+      cls: "vision2canvas-progress-spinner",
+      attr: { role: "progressbar", "aria-label": label, title: label }
+    });
+    let createdFile;
+    try {
+      createdFile = await convert();
+      if (this.settings.autoOpenCanvas) {
+        await this.app.workspace.getLeaf(true).openFile(createdFile);
+      }
+      new import_obsidian3.Notice(`Vision2Canvas created: ${createdFile.name}`);
     } catch (err) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      modal.showError(errorObj.message || "Failed to read image from clipboard.");
+      const reason = err instanceof Error ? err.message : String(err);
+      const message = createdFile ? `Vision2Canvas saved ${createdFile.name} but could not open it` : `Vision2Canvas could not convert ${source}`;
+      new import_obsidian3.Notice(reason ? `${message}: ${reason}` : message);
+    } finally {
+      spinner?.remove();
     }
   }
   /**
    * Core conversion pipeline: Base64 -> Image Compression -> Vision AI -> Canvas Data -> Vault .canvas File
    */
-  async processImageBase64(base64Str, mimeType, titlePrefix, modal) {
-    modal.updateStatus("Optimizing image size for Vision AI...");
+  async processImageBase64(base64Str, mimeType, titlePrefix) {
     const optimized = await ImageUtils.compressImageBase64(base64Str, mimeType);
-    modal.updateStatus(`Sending request to Vision AI (${this.settings.modelName})...`);
     const visionClient = new VisionClient(this.settings);
     const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
-    modal.updateStatus("AI analysis complete. Building Canvas layout...");
     const canvasBuilder = new CanvasBuilder(this.settings);
     const canvasData = canvasBuilder.buildCanvasData(aiResult);
     const validation = CanvasValidator.validate(canvasData);
@@ -840,20 +792,11 @@ var Vision2CanvasPlugin = class extends import_obsidian4.Plugin {
     }
     const canvasJsonStr = JSON.stringify(canvasData, null, 2);
     const filename = FileUtils.generateCanvasFilename(aiResult.title || titlePrefix);
-    modal.updateStatus(`Saving canvas file "${filename}" to vault...`);
-    const createdFile = await FileUtils.saveCanvasToVault(
+    return FileUtils.saveCanvasToVault(
       this.app,
       this.settings.outputFolder,
       filename,
       canvasJsonStr
     );
-    modal.showSuccess(
-      `Canvas created successfully! (${canvasData.nodes.length} nodes, ${canvasData.edges.length} edges)`,
-      canvasJsonStr
-    );
-    new import_obsidian4.Notice(`Vision2Canvas created: ${createdFile.name}`);
-    if (this.settings.autoOpenCanvas) {
-      await this.app.workspace.getLeaf(true).openFile(createdFile);
-    }
   }
 };

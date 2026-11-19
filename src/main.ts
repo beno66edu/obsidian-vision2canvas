@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile, Menu } from 'obsidian';
+import { Notice, Platform, Plugin, TFile } from 'obsidian';
 import { Vision2CanvasSettings, DEFAULT_SETTINGS } from './types';
 import { Vision2CanvasSettingTab } from './settings';
 import { VisionClient } from './ai/visionClient';
@@ -6,13 +6,18 @@ import { CanvasBuilder } from './canvas/canvasBuilder';
 import { CanvasValidator } from './canvas/canvasValidator';
 import { FileUtils } from './utils/fileUtils';
 import { ImageUtils } from './utils/imageUtils';
-import { ConvertProgressModal } from './ui/convertModal';
 
 export default class Vision2CanvasPlugin extends Plugin {
-  settings!: Vision2CanvasSettings;
+  declare settings: Vision2CanvasSettings;
+  private statusBarItem?: HTMLElement;
 
   async onload() {
     await this.loadSettings();
+
+    if (!Platform.isMobile) {
+      this.statusBarItem = this.addStatusBarItem();
+      this.statusBarItem.addClass('vision2canvas-status');
+    }
 
     // 1. Register Setting Tab
     this.addSettingTab(new Vision2CanvasSettingTab(this.app, this));
@@ -33,7 +38,7 @@ export default class Vision2CanvasPlugin extends Plugin {
 
     // 4. Right-click context menu on image files in File Explorer
     this.registerEvent(
-      this.app.workspace.on('file-menu', (menu: Menu, file: TFile) => {
+      this.app.workspace.on('file-menu', (menu, file) => {
         if (file instanceof TFile && this.isImageFile(file)) {
           menu.addItem((item) => {
             item
@@ -68,33 +73,21 @@ export default class Vision2CanvasPlugin extends Plugin {
   /**
    * Reads an image file from the Vault and converts it to .canvas
    */
-  public async convertVaultImage(file: TFile) {
-    const modal = new ConvertProgressModal(this.app);
-    modal.open();
-
-    try {
-      modal.updateStatus(`Reading image file "${file.name}"...`);
+  public convertVaultImage(file: TFile) {
+    return this.runConversion(file.name, async () => {
       const arrayBuffer = await this.app.vault.readBinary(file);
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
       const mimeType = ImageUtils.getMimeType(file.path);
 
-      await this.processImageBase64(base64Str, mimeType, file.basename, modal);
-    } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      modal.showError(errorObj.message || 'Failed to process vault image');
-    }
+      return this.processImageBase64(base64Str, mimeType, file.basename);
+    });
   }
 
   /**
    * Reads image from system clipboard and converts it to .canvas
    */
-  public async convertClipboardImage() {
-    const modal = new ConvertProgressModal(this.app);
-    modal.open();
-
-    try {
-      modal.updateStatus('Reading image from clipboard...');
-      
+  public convertClipboardImage() {
+    return this.runConversion('clipboard image', async () => {
       // Use standard Web Clipboard API
       const clipboardItems = await navigator.clipboard.read();
       let imageBlob: Blob | null = null;
@@ -110,17 +103,38 @@ export default class Vision2CanvasPlugin extends Plugin {
       }
 
       if (!imageBlob) {
-        modal.showError('No image found in clipboard. Please copy an image first.');
-        return;
+        throw new Error('No image found in clipboard. Please copy an image first.');
       }
 
       const arrayBuffer = await imageBlob.arrayBuffer();
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
 
-      await this.processImageBase64(base64Str, mimeType, 'ClipboardNote', modal);
+      return this.processImageBase64(base64Str, mimeType, 'ClipboardNote');
+    });
+  }
+
+  private async runConversion(source: string, convert: () => Promise<TFile>): Promise<void> {
+    const label = `Vision2Canvas: Converting ${source}`;
+    const spinner = this.statusBarItem?.createSpan({
+      cls: 'vision2canvas-progress-spinner',
+      attr: { role: 'progressbar', 'aria-label': label, title: label }
+    });
+
+    let createdFile: TFile | undefined;
+    try {
+      createdFile = await convert();
+      if (this.settings.autoOpenCanvas) {
+        await this.app.workspace.getLeaf(true).openFile(createdFile);
+      }
+      new Notice(`Vision2Canvas created: ${createdFile.name}`);
     } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      modal.showError(errorObj.message || 'Failed to read image from clipboard.');
+      const reason = err instanceof Error ? err.message : String(err);
+      const message = createdFile
+        ? `Vision2Canvas saved ${createdFile.name} but could not open it`
+        : `Vision2Canvas could not convert ${source}`;
+      new Notice(reason ? `${message}: ${reason}` : message);
+    } finally {
+      spinner?.remove();
     }
   }
 
@@ -130,18 +144,12 @@ export default class Vision2CanvasPlugin extends Plugin {
   private async processImageBase64(
     base64Str: string,
     mimeType: string,
-    titlePrefix: string,
-    modal: ConvertProgressModal
-  ) {
-    modal.updateStatus('Optimizing image size for Vision AI...');
+    titlePrefix: string
+  ): Promise<TFile> {
     const optimized = await ImageUtils.compressImageBase64(base64Str, mimeType);
-
-    modal.updateStatus(`Sending request to Vision AI (${this.settings.modelName})...`);
 
     const visionClient = new VisionClient(this.settings);
     const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
-
-    modal.updateStatus('AI analysis complete. Building Canvas layout...');
 
     const canvasBuilder = new CanvasBuilder(this.settings);
     const canvasData = canvasBuilder.buildCanvasData(aiResult);
@@ -154,24 +162,11 @@ export default class Vision2CanvasPlugin extends Plugin {
     const canvasJsonStr = JSON.stringify(canvasData, null, 2);
     const filename = FileUtils.generateCanvasFilename(aiResult.title || titlePrefix);
 
-    modal.updateStatus(`Saving canvas file "${filename}" to vault...`);
-
-    const createdFile = await FileUtils.saveCanvasToVault(
+    return FileUtils.saveCanvasToVault(
       this.app,
       this.settings.outputFolder,
       filename,
       canvasJsonStr
     );
-
-    modal.showSuccess(
-      `Canvas created successfully! (${canvasData.nodes.length} nodes, ${canvasData.edges.length} edges)`,
-      canvasJsonStr
-    );
-
-    new Notice(`Vision2Canvas created: ${createdFile.name}`);
-
-    if (this.settings.autoOpenCanvas) {
-      await this.app.workspace.getLeaf(true).openFile(createdFile);
-    }
   }
 }

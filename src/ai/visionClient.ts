@@ -54,7 +54,7 @@ export class VisionClient {
           method: 'POST',
           headers,
           body: JSON.stringify(requestBody),
-          throwOnError: false
+          throw: false
         });
         console.log('[Gemini] Headers:', response.headers);
         console.log('[Gemini] Text:', response.text);
@@ -191,7 +191,7 @@ export class VisionClient {
         model: this.settings.modelName,
         echo_load_config: false
       }),
-      throwOnError: false
+      throw: false
     });
 
     if (response.status >= 400) {

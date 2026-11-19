@@ -95,20 +95,20 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    // Layout Customization
     new Setting(containerEl)
-      .setName('Canvas Layout & Prompt')
-      .setHeading();
-
-    new Setting(containerEl)
-      .setName('Auto-Open Canvas After Creation')
-      .setDesc('Automatically open the newly generated .canvas file in obsidian.')
+      .setName('Open Canvas After Conversion')
+      .setDesc('When enabled, open the generated Canvas in a new tab. When disabled, save it to the output folder and show the completion notice.')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.autoOpenCanvas)
         .onChange(async (value) => {
           this.plugin.settings.autoOpenCanvas = value;
           await this.plugin.saveSettings();
         }));
+
+    // Layout Customization
+    new Setting(containerEl)
+      .setName('Canvas Layout & Prompt')
+      .setHeading();
 
     new Setting(containerEl)
       .setName('Custom System Prompt')
