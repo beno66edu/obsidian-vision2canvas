@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
-    "test:sample": "node scripts/test-convert.js"
+    "test:sample": "node scripts/test-convert.js",
+    "test:i18n": "node scripts/test-i18n.cjs"
   },
   "keywords": [
     "canvas",

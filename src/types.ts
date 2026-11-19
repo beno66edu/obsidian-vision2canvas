@@ -1,3 +1,6 @@
+import { Connection, defaultConnection, ProviderId, PROVIDERS } from './ai/providers';
+import { isLanguagePreference, type LanguagePreference } from './i18n';
+
 // Obsidian Canvas v1 Specification Types
 export type CanvasNodeType = 'text' | 'file' | 'link' | 'group';
 
@@ -82,9 +85,9 @@ export interface VisionAnalysisResult {
 
 // Plugin Settings Interface
 export interface Vision2CanvasSettings {
-  apiEndpoint: string;
-  apiKey: string;
-  modelName: string;
+  language: LanguagePreference;
+  aiProvider: ProviderId;
+  connections: Partial<Record<ProviderId, Connection>>;
   customPrompt: string;
   outputFolder: string;
   canvasScaleX: number;
@@ -95,9 +98,9 @@ export interface Vision2CanvasSettings {
 }
 
 export const DEFAULT_SETTINGS: Vision2CanvasSettings = {
-  apiEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  apiKey: '',
-  modelName: 'gemini-flash-latest',
+  language: 'auto',
+  aiProvider: 'gemini',
+  connections: {},
   customPrompt: '',
   outputFolder: '',
   canvasScaleX: 2.5,
@@ -106,3 +109,38 @@ export const DEFAULT_SETTINGS: Vision2CanvasSettings = {
   cardHeight: 180,
   autoOpenCanvas: true,
 };
+
+// Older installs saved a single connection alongside the general settings.
+export function readSettings(saved: Partial<Vision2CanvasSettings & Connection> | null): Vision2CanvasSettings {
+  const { apiEndpoint, apiKey, modelName, language, ...general } = saved ?? {};
+  const settings = {
+    ...DEFAULT_SETTINGS,
+    ...general,
+    language: isLanguagePreference(language) ? language : DEFAULT_SETTINGS.language,
+    connections: { ...general.connections }
+  };
+  if (!saved || general.connections) {
+    return settings;
+  }
+
+  const endpoint = apiEndpoint?.trim().replace(/\/+$/, '');
+  let provider: ProviderId = 'remote';
+  if (general.aiProvider === 'local') {
+    provider = 'local';
+  } else {
+    const legacyEndpoint = endpoint ?? PROVIDERS.gemini.endpoint;
+    for (const id of ['gemini', 'openai', 'anthropic', 'openrouter'] as const) {
+      if (PROVIDERS[id].endpoint === legacyEndpoint) provider = id;
+    }
+  }
+  const connection = defaultConnection(provider);
+  // The old local client used localhost even when settings still held the Gemini default.
+  if (endpoint && !(provider === 'local' && endpoint === PROVIDERS.gemini.endpoint)) {
+    connection.apiEndpoint = endpoint;
+  }
+  connection.apiKey = apiKey ?? '';
+  connection.modelName = modelName || connection.modelName || PROVIDERS.gemini.model;
+  settings.aiProvider = provider;
+  settings.connections[provider] = connection;
+  return settings;
+}

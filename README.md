@@ -87,9 +87,10 @@ Then in Obsidian: `Settings` → `Community Plugins` → Enable **Vision2Canvas*
 ### 2. Configure Settings
 
 In Obsidian `Settings` → `Vision2Canvas`:
-- **AI API Endpoint**: `https://generativelanguage.googleapis.com/v1beta/openai` (or `https://api.openai.com/v1`)
-- **API Key**: `YOUR_API_KEY`
-- **Vision Model Name**: `gemini-flash-latest` (or `gpt-4o`)
+
+Choose Google Gemini, OpenAI, Anthropic (Claude), or OpenRouter under **Connection Type**. Enter the provider’s **API Key** and select a model that accepts images by entering its ID under **Vision Model Name**. Each provider remembers its own key and model.
+
+For LM Studio, choose **LM Studio (local)** and enter your installed vision model’s ID. For other OpenAI-compatible servers, choose **Custom (OpenAI compatible)** and enter the base URL and model ID.
 
 ---
 

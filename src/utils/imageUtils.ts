@@ -1,4 +1,4 @@
-import { createEl } from 'obsidian';
+
 
 export class ImageUtils {
   /**
@@ -64,7 +64,11 @@ export class ImageUtils {
           }
         }
 
-        const canvas = createEl('canvas');
+        const canvas = document.createElement('canvas');
+        if (!canvas || typeof canvas.getContext !== 'function') {
+          resolve({ base64: base64Data, mimeType });
+          return;
+        }
         canvas.width = width;
         canvas.height = height;
 
