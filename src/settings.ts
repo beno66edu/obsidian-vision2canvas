@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import Vision2CanvasPlugin from './main';
+import { defaultConnection, ProviderId, PROVIDERS } from './ai/providers';
 import { DEFAULT_VISION_SYSTEM_PROMPT } from './ai/promptTemplates';
 
 export class Vision2CanvasSettingTab extends PluginSettingTab {
@@ -18,68 +19,58 @@ export class Vision2CanvasSettingTab extends PluginSettingTab {
       .setName('AI Provider')
       .setHeading();
 
+    const settings = this.plugin.settings;
+    const provider = settings.aiProvider;
+    const preset = PROVIDERS[provider];
+    const connection = settings.connections[provider] ??= defaultConnection(provider);
+    const customEndpoint = provider === 'local' || provider === 'remote';
+
     new Setting(containerEl)
       .setName('Connection Type')
-      .setDesc('Choose Local for LM Studio or another local OpenAI-compatible server, or Remote for a hosted API.')
-      .addDropdown(dropdown => dropdown
-        .addOption('remote', 'Remote API')
-        .addOption('local', 'Local model (LM Studio)')
-        .setValue(this.plugin.settings.aiProvider)
-        .onChange(async (value) => {
-          const provider = value as 'local' | 'remote';
-          const remoteDefault = 'https://generativelanguage.googleapis.com/v1beta/openai';
-          const localDefault = 'http://127.0.0.1:1234/v1';
-
-          if (provider === 'local' && (!this.plugin.settings.apiEndpoint || this.plugin.settings.apiEndpoint === remoteDefault)) {
-            this.plugin.settings.apiEndpoint = localDefault;
-          } else if (provider === 'remote' && this.plugin.settings.apiEndpoint === localDefault) {
-            this.plugin.settings.apiEndpoint = remoteDefault;
-          }
-
-          this.plugin.settings.aiProvider = provider;
-          await this.plugin.saveSettings();
+      .setDesc('Choose the provider that will analyze your images.')
+      .addDropdown(dropdown => {
+        for (const [id, { name }] of Object.entries(PROVIDERS)) {
+          dropdown.addOption(id, name);
+        }
+        dropdown.setValue(provider).onChange(async value => {
+          settings.aiProvider = value as ProviderId;
           this.display();
-        }));
-
-    // AI Gateway Endpoint
-    new Setting(containerEl)
-      .setName('AI API Endpoint')
-      .setDesc(this.plugin.settings.aiProvider === 'local'
-        ? 'Base URL of your local OpenAI-compatible server. LM Studio default: http://127.0.0.1:1234/v1'
-        : 'URL of your OpenAI-compatible API Gateway, Google AI Studio, or MLLM server.')
-      .addText(text => text
-        .setPlaceholder(this.plugin.settings.aiProvider === 'local'
-          ? 'http://127.0.0.1:1234/v1'
-          : 'https://generativelanguage.googleapis.com/v1beta/openai')
-        .setValue(this.plugin.settings.apiEndpoint)
-        .onChange(async (value) => {
-          this.plugin.settings.apiEndpoint = value.trim();
           await this.plugin.saveSettings();
-        }));
+        });
+      });
 
-    // API Key
+    if (customEndpoint) {
+      new Setting(containerEl)
+        .setName('AI API Endpoint')
+        .setDesc('Base URL of your server, including its API version.')
+        .addText(text => text
+          .setPlaceholder(preset.endpoint || 'https://example.com/v1')
+          .setValue(connection.apiEndpoint)
+          .onChange(async value => {
+            connection.apiEndpoint = value.trim();
+            await this.plugin.saveSettings();
+          }));
+    }
+
     new Setting(containerEl)
       .setName('API Key')
-      .setDesc(this.plugin.settings.aiProvider === 'local'
-        ? 'Optional. Leave empty for LM Studio and most local servers.'
-        : 'API Key for authenticating with your AI gateway or Google AI Studio.')
-      .addText(text => text
-        .setPlaceholder('API Key...')
-        .setValue(this.plugin.settings.apiKey)
-        .onChange(async (value) => {
-          this.plugin.settings.apiKey = value.trim();
+      .setDesc(customEndpoint ? 'Enter a key if your server requires one.' : `Enter your ${preset.name} API key.`)
+      .addText(text => {
+        text.inputEl.type = 'password';
+        text.setValue(connection.apiKey).onChange(async value => {
+          connection.apiKey = value.trim();
           await this.plugin.saveSettings();
-        }));
+        });
+      });
 
-    // Model Name
     new Setting(containerEl)
       .setName('Vision Model Name')
-      .setDesc('Name of the Vision MLLM model to use (e.g. gemini-flash-latest, gpt-4o, claude-3-5-sonnet).')
+      .setDesc('Choose a model that accepts images.')
       .addText(text => text
-        .setPlaceholder('gemini-flash-latest')
-        .setValue(this.plugin.settings.modelName)
-        .onChange(async (value) => {
-          this.plugin.settings.modelName = value.trim();
+        .setPlaceholder(preset.model || 'Vision model ID')
+        .setValue(connection.modelName)
+        .onChange(async value => {
+          connection.modelName = value.trim();
           await this.plugin.saveSettings();
         }));
 

@@ -87,9 +87,10 @@ npm run build
 ### 2. 配置設定頁面
 
 進入 Obsidian `設定` → `Vision2Canvas`：
-- **AI API Endpoint**：`https://generativelanguage.googleapis.com/v1beta/openai`（或 `https://api.openai.com/v1`）
-- **API Key**：填入您的 Google AI Studio 或 OpenAI API 金鑰
-- **Vision Model Name**：`gemini-flash-latest`（或 `gpt-4o`）
+
+在 **Connection Type** 中選擇 Google Gemini、OpenAI、Anthropic (Claude) 或 OpenRouter，並填入該服務的 **API Key**。**Vision Model Name** 已有預設值，也可改為其他支援圖片輸入的模型 ID。每個服務會分別儲存金鑰和模型設定。
+
+使用 LM Studio 時，請選擇 **LM Studio (local)** 並輸入已安裝的視覺模型 ID。其他相容於 OpenAI API 的伺服器請選擇 **Custom (OpenAI compatible)**，再輸入 API 基底網址和模型 ID。
 
 ---
 

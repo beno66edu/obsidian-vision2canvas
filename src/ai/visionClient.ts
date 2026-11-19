@@ -1,46 +1,47 @@
 import { requestUrl, RequestUrlResponse } from 'obsidian';
 import { VisionAnalysisResult, Vision2CanvasSettings } from '../types';
+import { Connection, defaultConnection, ProviderId, PROVIDERS } from './providers';
 import { DEFAULT_VISION_SYSTEM_PROMPT } from './promptTemplates';
 
 export class VisionClient {
-  private static readonly DEFAULT_REMOTE_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/openai';
-  private static readonly DEFAULT_LOCAL_ENDPOINT = 'http://127.0.0.1:1234/v1';
-  private settings: Vision2CanvasSettings;
+  private readonly provider: ProviderId;
+  private readonly connection: Connection;
+  private readonly systemPrompt: string;
 
   constructor(settings: Vision2CanvasSettings) {
-    this.settings = settings;
+    this.provider = settings.aiProvider;
+    this.connection = { ...(settings.connections[this.provider] ?? defaultConnection(this.provider)) };
+    this.systemPrompt = settings.customPrompt || DEFAULT_VISION_SYSTEM_PROMPT;
   }
 
   /**
    * Analyze image via Vision MLLM API endpoint (with automatic retry for 503/429 transient errors)
    */
   public async analyzeImage(base64ImageData: string, mimeType: string = 'image/jpeg'): Promise<VisionAnalysisResult> {
-    const configuredEndpoint = this.settings.apiEndpoint.trim();
-    const baseEndpoint = this.settings.aiProvider === 'local' &&
-      (!configuredEndpoint || configuredEndpoint === VisionClient.DEFAULT_REMOTE_ENDPOINT)
-      ? VisionClient.DEFAULT_LOCAL_ENDPOINT
-      : configuredEndpoint;
-    const normalizedBaseEndpoint = baseEndpoint.replace(/\/+$/, '');
-    const endpoint = normalizedBaseEndpoint + '/chat/completions';
-
-    if (this.settings.aiProvider === 'local') {
-      await this.loadLocalModel(normalizedBaseEndpoint);
+    const preset = PROVIDERS[this.provider];
+    const baseEndpoint = (this.connection.apiEndpoint || preset.endpoint).replace(/\/+$/, '');
+    const model = this.connection.modelName || preset.model;
+    if (!baseEndpoint) throw new Error('Set the AI API endpoint in Vision2Canvas settings.');
+    if (!model) throw new Error(`Set a vision model for ${preset.name} in Vision2Canvas settings.`);
+    if (!this.connection.apiKey && this.provider !== 'local' && this.provider !== 'remote') {
+      throw new Error(`Set your ${preset.name} API key in Vision2Canvas settings.`);
+    }
+    if (this.provider === 'local') {
+      await this.loadLocalModel(baseEndpoint);
     }
 
-    const systemPrompt = this.settings.customPrompt || DEFAULT_VISION_SYSTEM_PROMPT;
-
-    const dataUrl = base64ImageData.startsWith('data:') 
-      ? base64ImageData 
+    const endpoint = baseEndpoint + '/chat/completions';
+    const dataUrl = base64ImageData.startsWith('data:')
+      ? base64ImageData
       : `data:${mimeType};base64,${base64ImageData}`;
-
-    const requestBody = this.buildRequestBody(systemPrompt, dataUrl);
+    const requestBody = this.buildRequestBody(model, dataUrl);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
 
-    if (this.settings.apiKey) {
-      headers['Authorization'] = `Bearer ${this.settings.apiKey}`;
+    if (this.connection.apiKey) {
+      headers['Authorization'] = `Bearer ${this.connection.apiKey}`;
     }
 
     const maxRetries = 3;
@@ -48,7 +49,6 @@ export class VisionClient {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log('[Gemini] Status:');
         const response: RequestUrlResponse = await requestUrl({
           url: endpoint,
           method: 'POST',
@@ -56,9 +56,6 @@ export class VisionClient {
           body: JSON.stringify(requestBody),
           throw: false
         });
-        console.log('[Gemini] Headers:', response.headers);
-        console.log('[Gemini] Text:', response.text);
-
 
         if (response.status === 503 || response.status === 429) {
           if (attempt < maxRetries) {
@@ -100,70 +97,21 @@ export class VisionClient {
     throw lastError || new Error('Failed to analyze image with Vision AI.');
   }
 
-  /**
-   * Builds the request payload according to the selected provider.
-   * Local providers usually follow the OpenAI-like format with a simple chat payload.
-   * Remote providers may accept extra response controls or stricter JSON formatting.
-   */
-  private buildRequestBody(systemPrompt: string, dataUrl: string): Record<string, unknown> {
-    const model = this.settings.modelName || 'gemini-flash-latest';
-    const userPrompt = 'Please analyze this handwritten note photo and output the JSON canvas structure.';
-
-    if (this.settings.aiProvider === 'local') {
-      return {
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: userPrompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: dataUrl
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0.2,
-        stream: false
-      };
-    }
-
+  private buildRequestBody(model: string, dataUrl: string): Record<string, unknown> {
     return {
       model,
       messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
+        { role: 'system', content: this.systemPrompt },
         {
           role: 'user',
           content: [
-            {
-              type: 'text',
-              text: userPrompt
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: dataUrl
-              }
-            }
+            { type: 'text', text: 'Please analyze this handwritten note photo and output the JSON canvas structure.' },
+            { type: 'image_url', image_url: { url: dataUrl } }
           ]
         }
       ],
-      /*temperature: 0.2,*/
-      /*max_tokens: 4096,*/
-     /*response_format: { type: 'json_object'} */
+      ...(this.provider === 'local' && { temperature: 0.2, stream: false }),
+      ...(this.provider === 'anthropic' && { max_tokens: 8192 })
     };
   }
 
@@ -179,8 +127,8 @@ export class VisionClient {
       'Content-Type': 'application/json'
     };
 
-    if (this.settings.apiKey) {
-      headers['Authorization'] = `Bearer ${this.settings.apiKey}`;
+    if (this.connection.apiKey) {
+      headers['Authorization'] = `Bearer ${this.connection.apiKey}`;
     }
 
     const response = await requestUrl({
@@ -188,7 +136,7 @@ export class VisionClient {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: this.settings.modelName,
+        model: this.connection.modelName,
         echo_load_config: false
       }),
       throw: false
@@ -196,7 +144,7 @@ export class VisionClient {
 
     if (response.status >= 400) {
       throw new Error(
-        `LM Studio could not load model "${this.settings.modelName}" (${response.status}): ${response.text}`
+        `LM Studio could not load model "${this.connection.modelName}" (${response.status}): ${response.text}`
       );
     }
   }

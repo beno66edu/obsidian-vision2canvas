@@ -1,5 +1,5 @@
 import { Notice, Platform, Plugin, TFile } from 'obsidian';
-import { Vision2CanvasSettings, DEFAULT_SETTINGS } from './types';
+import { Vision2CanvasSettings, readSettings } from './types';
 import { Vision2CanvasSettingTab } from './settings';
 import { VisionClient } from './ai/visionClient';
 import { CanvasBuilder } from './canvas/canvasBuilder';
@@ -58,7 +58,7 @@ export default class Vision2CanvasPlugin extends Plugin {
   }
 
   public async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<Vision2CanvasSettings>);
+    this.settings = readSettings(await this.loadData());
   }
 
   public async saveSettings() {
@@ -74,12 +74,12 @@ export default class Vision2CanvasPlugin extends Plugin {
    * Reads an image file from the Vault and converts it to .canvas
    */
   public convertVaultImage(file: TFile) {
-    return this.runConversion(file.name, async () => {
+    return this.runConversion(file.name, async (client) => {
       const arrayBuffer = await this.app.vault.readBinary(file);
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
       const mimeType = ImageUtils.getMimeType(file.path);
 
-      return this.processImageBase64(base64Str, mimeType, file.basename);
+      return this.processImageBase64(base64Str, mimeType, file.basename, client);
     });
   }
 
@@ -87,7 +87,7 @@ export default class Vision2CanvasPlugin extends Plugin {
    * Reads image from system clipboard and converts it to .canvas
    */
   public convertClipboardImage() {
-    return this.runConversion('clipboard image', async () => {
+    return this.runConversion('clipboard image', async (client) => {
       // Use standard Web Clipboard API
       const clipboardItems = await navigator.clipboard.read();
       let imageBlob: Blob | null = null;
@@ -109,11 +109,11 @@ export default class Vision2CanvasPlugin extends Plugin {
       const arrayBuffer = await imageBlob.arrayBuffer();
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
 
-      return this.processImageBase64(base64Str, mimeType, 'ClipboardNote');
+      return this.processImageBase64(base64Str, mimeType, 'ClipboardNote', client);
     });
   }
 
-  private async runConversion(source: string, convert: () => Promise<TFile>): Promise<void> {
+  private async runConversion(source: string, convert: (client: VisionClient) => Promise<TFile>): Promise<void> {
     const label = `Vision2Canvas: Converting ${source}`;
     const spinner = this.statusBarItem?.createSpan({
       cls: 'vision2canvas-progress-spinner',
@@ -122,7 +122,7 @@ export default class Vision2CanvasPlugin extends Plugin {
 
     let createdFile: TFile | undefined;
     try {
-      createdFile = await convert();
+      createdFile = await convert(new VisionClient(this.settings));
       if (this.settings.autoOpenCanvas) {
         await this.app.workspace.getLeaf(true).openFile(createdFile);
       }
@@ -144,11 +144,11 @@ export default class Vision2CanvasPlugin extends Plugin {
   private async processImageBase64(
     base64Str: string,
     mimeType: string,
-    titlePrefix: string
+    titlePrefix: string,
+    visionClient: VisionClient
   ): Promise<TFile> {
     const optimized = await ImageUtils.compressImageBase64(base64Str, mimeType);
 
-    const visionClient = new VisionClient(this.settings);
     const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
 
     const canvasBuilder = new CanvasBuilder(this.settings);

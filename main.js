@@ -30,12 +30,24 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian3 = require("obsidian");
 
+// src/ai/providers.ts
+var PROVIDERS = {
+  gemini: { name: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-flash-latest" },
+  openai: { name: "OpenAI", endpoint: "https://api.openai.com/v1", model: "gpt-4.1-mini" },
+  anthropic: { name: "Anthropic (Claude)", endpoint: "https://api.anthropic.com/v1", model: "claude-sonnet-4-6" },
+  openrouter: { name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1", model: "openai/gpt-4.1-mini" },
+  local: { name: "LM Studio (local)", endpoint: "http://127.0.0.1:1234/v1", model: "" },
+  remote: { name: "Custom (OpenAI compatible)", endpoint: "", model: "" }
+};
+function defaultConnection(provider) {
+  const { endpoint, model } = PROVIDERS[provider];
+  return { apiEndpoint: endpoint, apiKey: "", modelName: model };
+}
+
 // src/types.ts
 var DEFAULT_SETTINGS = {
-  aiProvider: "remote",
-  apiEndpoint: "https://generativelanguage.googleapis.com/v1beta/openai",
-  apiKey: "",
-  modelName: "gemini-flash-latest",
+  aiProvider: "gemini",
+  connections: {},
   customPrompt: "",
   outputFolder: "",
   canvasScaleX: 2.5,
@@ -44,6 +56,32 @@ var DEFAULT_SETTINGS = {
   cardHeight: 180,
   autoOpenCanvas: true
 };
+function readSettings(saved) {
+  const { apiEndpoint, apiKey, modelName, ...general } = saved ?? {};
+  const settings = { ...DEFAULT_SETTINGS, ...general, connections: { ...general.connections } };
+  if (!saved || general.connections) {
+    return settings;
+  }
+  const endpoint = apiEndpoint?.trim().replace(/\/+$/, "");
+  let provider = "remote";
+  if (general.aiProvider === "local") {
+    provider = "local";
+  } else {
+    const legacyEndpoint = endpoint ?? PROVIDERS.gemini.endpoint;
+    for (const id of ["gemini", "openai", "anthropic", "openrouter"]) {
+      if (PROVIDERS[id].endpoint === legacyEndpoint) provider = id;
+    }
+  }
+  const connection = defaultConnection(provider);
+  if (endpoint && !(provider === "local" && endpoint === PROVIDERS.gemini.endpoint)) {
+    connection.apiEndpoint = endpoint;
+  }
+  connection.apiKey = apiKey ?? "";
+  connection.modelName = modelName || connection.modelName || PROVIDERS.gemini.model;
+  settings.aiProvider = provider;
+  settings.connections[provider] = connection;
+  return settings;
+}
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
@@ -112,29 +150,36 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     new import_obsidian.Setting(containerEl).setName("AI Provider").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Connection Type").setDesc("Choose Local for LM Studio or another local OpenAI-compatible server, or Remote for a hosted API.").addDropdown((dropdown) => dropdown.addOption("remote", "Remote API").addOption("local", "Local model (LM Studio)").setValue(this.plugin.settings.aiProvider).onChange(async (value) => {
-      const provider = value;
-      const remoteDefault = "https://generativelanguage.googleapis.com/v1beta/openai";
-      const localDefault = "http://127.0.0.1:1234/v1";
-      if (provider === "local" && (!this.plugin.settings.apiEndpoint || this.plugin.settings.apiEndpoint === remoteDefault)) {
-        this.plugin.settings.apiEndpoint = localDefault;
-      } else if (provider === "remote" && this.plugin.settings.apiEndpoint === localDefault) {
-        this.plugin.settings.apiEndpoint = remoteDefault;
+    const settings = this.plugin.settings;
+    const provider = settings.aiProvider;
+    const preset = PROVIDERS[provider];
+    const connection = settings.connections[provider] ??= defaultConnection(provider);
+    const customEndpoint = provider === "local" || provider === "remote";
+    new import_obsidian.Setting(containerEl).setName("Connection Type").setDesc("Choose the provider that will analyze your images.").addDropdown((dropdown) => {
+      for (const [id, { name }] of Object.entries(PROVIDERS)) {
+        dropdown.addOption(id, name);
       }
-      this.plugin.settings.aiProvider = provider;
-      await this.plugin.saveSettings();
-      this.display();
-    }));
-    new import_obsidian.Setting(containerEl).setName("AI API Endpoint").setDesc(this.plugin.settings.aiProvider === "local" ? "Base URL of your local OpenAI-compatible server. LM Studio default: http://127.0.0.1:1234/v1" : "URL of your OpenAI-compatible API Gateway, Google AI Studio, or MLLM server.").addText((text) => text.setPlaceholder(this.plugin.settings.aiProvider === "local" ? "http://127.0.0.1:1234/v1" : "https://generativelanguage.googleapis.com/v1beta/openai").setValue(this.plugin.settings.apiEndpoint).onChange(async (value) => {
-      this.plugin.settings.apiEndpoint = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(containerEl).setName("API Key").setDesc(this.plugin.settings.aiProvider === "local" ? "Optional. Leave empty for LM Studio and most local servers." : "API Key for authenticating with your AI gateway or Google AI Studio.").addText((text) => text.setPlaceholder("API Key...").setValue(this.plugin.settings.apiKey).onChange(async (value) => {
-      this.plugin.settings.apiKey = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(containerEl).setName("Vision Model Name").setDesc("Name of the Vision MLLM model to use (e.g. gemini-flash-latest, gpt-4o, claude-3-5-sonnet).").addText((text) => text.setPlaceholder("gemini-flash-latest").setValue(this.plugin.settings.modelName).onChange(async (value) => {
-      this.plugin.settings.modelName = value.trim();
+      dropdown.setValue(provider).onChange(async (value) => {
+        settings.aiProvider = value;
+        this.display();
+        await this.plugin.saveSettings();
+      });
+    });
+    if (customEndpoint) {
+      new import_obsidian.Setting(containerEl).setName("AI API Endpoint").setDesc("Base URL of your server, including its API version.").addText((text) => text.setPlaceholder(preset.endpoint || "https://example.com/v1").setValue(connection.apiEndpoint).onChange(async (value) => {
+        connection.apiEndpoint = value.trim();
+        await this.plugin.saveSettings();
+      }));
+    }
+    new import_obsidian.Setting(containerEl).setName("API Key").setDesc(customEndpoint ? "Enter a key if your server requires one." : `Enter your ${preset.name} API key.`).addText((text) => {
+      text.inputEl.type = "password";
+      text.setValue(connection.apiKey).onChange(async (value) => {
+        connection.apiKey = value.trim();
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian.Setting(containerEl).setName("Vision Model Name").setDesc("Choose a model that accepts images.").addText((text) => text.setPlaceholder(preset.model || "Vision model ID").setValue(connection.modelName).onChange(async (value) => {
+      connection.modelName = value.trim();
       await this.plugin.saveSettings();
     }));
     new import_obsidian.Setting(containerEl).setName("Canvas Output Folder").setDesc("Folder in your vault where generated .canvas files will be saved (leave empty for Vault root).").addText((text) => text.setPlaceholder("Canvases/Handwritten").setValue(this.plugin.settings.outputFolder).onChange(async (value) => {
@@ -155,38 +200,43 @@ var Vision2CanvasSettingTab = class extends import_obsidian.PluginSettingTab {
 
 // src/ai/visionClient.ts
 var import_obsidian2 = require("obsidian");
-var VisionClient = class _VisionClient {
-  static DEFAULT_REMOTE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai";
-  static DEFAULT_LOCAL_ENDPOINT = "http://127.0.0.1:1234/v1";
-  settings;
+var VisionClient = class {
+  provider;
+  connection;
+  systemPrompt;
   constructor(settings) {
-    this.settings = settings;
+    this.provider = settings.aiProvider;
+    this.connection = { ...settings.connections[this.provider] ?? defaultConnection(this.provider) };
+    this.systemPrompt = settings.customPrompt || DEFAULT_VISION_SYSTEM_PROMPT;
   }
   /**
    * Analyze image via Vision MLLM API endpoint (with automatic retry for 503/429 transient errors)
    */
   async analyzeImage(base64ImageData, mimeType = "image/jpeg") {
-    const configuredEndpoint = this.settings.apiEndpoint.trim();
-    const baseEndpoint = this.settings.aiProvider === "local" && (!configuredEndpoint || configuredEndpoint === _VisionClient.DEFAULT_REMOTE_ENDPOINT) ? _VisionClient.DEFAULT_LOCAL_ENDPOINT : configuredEndpoint;
-    const normalizedBaseEndpoint = baseEndpoint.replace(/\/+$/, "");
-    const endpoint = normalizedBaseEndpoint + "/chat/completions";
-    if (this.settings.aiProvider === "local") {
-      await this.loadLocalModel(normalizedBaseEndpoint);
+    const preset = PROVIDERS[this.provider];
+    const baseEndpoint = (this.connection.apiEndpoint || preset.endpoint).replace(/\/+$/, "");
+    const model = this.connection.modelName || preset.model;
+    if (!baseEndpoint) throw new Error("Set the AI API endpoint in Vision2Canvas settings.");
+    if (!model) throw new Error(`Set a vision model for ${preset.name} in Vision2Canvas settings.`);
+    if (!this.connection.apiKey && this.provider !== "local" && this.provider !== "remote") {
+      throw new Error(`Set your ${preset.name} API key in Vision2Canvas settings.`);
     }
-    const systemPrompt = this.settings.customPrompt || DEFAULT_VISION_SYSTEM_PROMPT;
+    if (this.provider === "local") {
+      await this.loadLocalModel(baseEndpoint);
+    }
+    const endpoint = baseEndpoint + "/chat/completions";
     const dataUrl = base64ImageData.startsWith("data:") ? base64ImageData : `data:${mimeType};base64,${base64ImageData}`;
-    const requestBody = this.buildRequestBody(systemPrompt, dataUrl);
+    const requestBody = this.buildRequestBody(model, dataUrl);
     const headers = {
       "Content-Type": "application/json"
     };
-    if (this.settings.apiKey) {
-      headers["Authorization"] = `Bearer ${this.settings.apiKey}`;
+    if (this.connection.apiKey) {
+      headers["Authorization"] = `Bearer ${this.connection.apiKey}`;
     }
     const maxRetries = 3;
     let lastError = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log("[Gemini] Status:");
         const response = await (0, import_obsidian2.requestUrl)({
           url: endpoint,
           method: "POST",
@@ -194,8 +244,6 @@ var VisionClient = class _VisionClient {
           body: JSON.stringify(requestBody),
           throw: false
         });
-        console.log("[Gemini] Headers:", response.headers);
-        console.log("[Gemini] Text:", response.text);
         if (response.status === 503 || response.status === 429) {
           if (attempt < maxRetries) {
             await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
@@ -224,68 +272,21 @@ var VisionClient = class _VisionClient {
     }
     throw lastError || new Error("Failed to analyze image with Vision AI.");
   }
-  /**
-   * Builds the request payload according to the selected provider.
-   * Local providers usually follow the OpenAI-like format with a simple chat payload.
-   * Remote providers may accept extra response controls or stricter JSON formatting.
-   */
-  buildRequestBody(systemPrompt, dataUrl) {
-    const model = this.settings.modelName || "gemini-flash-latest";
-    const userPrompt = "Please analyze this handwritten note photo and output the JSON canvas structure.";
-    if (this.settings.aiProvider === "local") {
-      return {
-        model,
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: userPrompt
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: dataUrl
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0.2,
-        stream: false
-      };
-    }
+  buildRequestBody(model, dataUrl) {
     return {
       model,
       messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        },
+        { role: "system", content: this.systemPrompt },
         {
           role: "user",
           content: [
-            {
-              type: "text",
-              text: userPrompt
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: dataUrl
-              }
-            }
+            { type: "text", text: "Please analyze this handwritten note photo and output the JSON canvas structure." },
+            { type: "image_url", image_url: { url: dataUrl } }
           ]
         }
-      ]
-      /*temperature: 0.2,*/
-      /*max_tokens: 4096,*/
-      /*response_format: { type: 'json_object'} */
+      ],
+      ...this.provider === "local" && { temperature: 0.2, stream: false },
+      ...this.provider === "anthropic" && { max_tokens: 8192 }
     };
   }
   /**
@@ -297,22 +298,22 @@ var VisionClient = class _VisionClient {
     const headers = {
       "Content-Type": "application/json"
     };
-    if (this.settings.apiKey) {
-      headers["Authorization"] = `Bearer ${this.settings.apiKey}`;
+    if (this.connection.apiKey) {
+      headers["Authorization"] = `Bearer ${this.connection.apiKey}`;
     }
     const response = await (0, import_obsidian2.requestUrl)({
       url: loadEndpoint,
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: this.settings.modelName,
+        model: this.connection.modelName,
         echo_load_config: false
       }),
       throw: false
     });
     if (response.status >= 400) {
       throw new Error(
-        `LM Studio could not load model "${this.settings.modelName}" (${response.status}): ${response.text}`
+        `LM Studio could not load model "${this.connection.modelName}" (${response.status}): ${response.text}`
       );
     }
   }
@@ -712,7 +713,7 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
   onunload() {
   }
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = readSettings(await this.loadData());
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -725,18 +726,18 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
    * Reads an image file from the Vault and converts it to .canvas
    */
   convertVaultImage(file) {
-    return this.runConversion(file.name, async () => {
+    return this.runConversion(file.name, async (client) => {
       const arrayBuffer = await this.app.vault.readBinary(file);
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
       const mimeType = ImageUtils.getMimeType(file.path);
-      return this.processImageBase64(base64Str, mimeType, file.basename);
+      return this.processImageBase64(base64Str, mimeType, file.basename, client);
     });
   }
   /**
    * Reads image from system clipboard and converts it to .canvas
    */
   convertClipboardImage() {
-    return this.runConversion("clipboard image", async () => {
+    return this.runConversion("clipboard image", async (client) => {
       const clipboardItems = await navigator.clipboard.read();
       let imageBlob = null;
       let mimeType = "image/png";
@@ -753,7 +754,7 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
       }
       const arrayBuffer = await imageBlob.arrayBuffer();
       const base64Str = ImageUtils.arrayBufferToBase64(arrayBuffer);
-      return this.processImageBase64(base64Str, mimeType, "ClipboardNote");
+      return this.processImageBase64(base64Str, mimeType, "ClipboardNote", client);
     });
   }
   async runConversion(source, convert) {
@@ -764,7 +765,7 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
     });
     let createdFile;
     try {
-      createdFile = await convert();
+      createdFile = await convert(new VisionClient(this.settings));
       if (this.settings.autoOpenCanvas) {
         await this.app.workspace.getLeaf(true).openFile(createdFile);
       }
@@ -780,9 +781,8 @@ var Vision2CanvasPlugin = class extends import_obsidian3.Plugin {
   /**
    * Core conversion pipeline: Base64 -> Image Compression -> Vision AI -> Canvas Data -> Vault .canvas File
    */
-  async processImageBase64(base64Str, mimeType, titlePrefix) {
+  async processImageBase64(base64Str, mimeType, titlePrefix, visionClient) {
     const optimized = await ImageUtils.compressImageBase64(base64Str, mimeType);
-    const visionClient = new VisionClient(this.settings);
     const aiResult = await visionClient.analyzeImage(optimized.base64, optimized.mimeType);
     const canvasBuilder = new CanvasBuilder(this.settings);
     const canvasData = canvasBuilder.buildCanvasData(aiResult);
